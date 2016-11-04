@@ -2,10 +2,9 @@
 
 struct mylist myStr;
 struct String_vector myInjectroute;
-Global_conf global_conf;
 int initStatus = 0, curStatus = 0;
 static int mycount = 0, num = 0;
-
+Global_conf global_conf;
 int32_t current_version;
 zhandle_t* zkhandle;
 
@@ -501,7 +500,7 @@ int init_check_zknode(zhandle_t *zkhandle)
    
     mkdir("/var/log/ad-policy", S_IRWXU);
  */
-	char sys_default_conf[]="<sys log_level=4 output_timeout=10/>";
+	char sys_default_conf[]="<sys log_level='4' output_timeout='10'/>";
 	char init_node_path[][128] = {
 		"/sys",
 		"/policy",
@@ -1563,11 +1562,17 @@ void sys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* watc
 		zoo_wget(zh,path,sys_conf_watch,"watch_sys",sysData,&dataLen,&stat);
 		traceEvent("Sys conf changed",path,"INFO");
 		printf("sys conf is %s ",sysData);
+		parse_sys_conf(sysData,strlen(sysData));
 	}
 }
-void handle_conf_data(zhandle_t* zh)
+void handle_sys_conf_data(int rc,const char* value,int value_len,const struct Stat* stat,const void* data)
 {
-	traceEvent("do handle_conf_data","hhhh","INFO");
+	char msg[DATA_LENGTH];
+	char sysdata[DATA_LENGTH];
+	sprintf(msg,"rc:%d,value:%s ,value_len:%d, data:%s",rc,value,value_len,data);
+	traceEvent("do handle_conf_data",msg,"INFO");
+	memcpy(sysdata,value,value_len);
+	parse_sys_conf(sysdata,value_len);
 }
 void get_parse_conf(zkhandle)
 {
@@ -1584,7 +1589,7 @@ void get_parse_conf(zkhandle)
     char sysConf[DATA_LENGTH];
 	int  dataLen = sizeof(sysConf);
 	int flag;
-	flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_conf_data,"changed");
+	flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
 	printf("sys_conf is %s\n",sysConf);
 	
 }

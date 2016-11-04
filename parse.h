@@ -14,5 +14,6 @@ extern void parseMac(char *pMsg);
 extern void parseInject(const char *pMsg);
 extern void parseInterface(char *pMsg);
 extern void parseGlobalPolicy(char *pMsg);
+extern void parse_sys_conf(const char* data,size_t len);
 #endif
 

@@ -1,9 +1,2 @@
-flag = "-I /usr/local/include/zookeeper/ /usr/local/lib/libzookeeper_mt.so -lm -g -w "
-object = policyWather.o cJSON.o utility.o parse.o
-policyWatch:$(object)
-gcc -o policyWatch $(flag) $(object)
-
-$(object):
-
-#policyWatch.o:policyWatch.h 
-#    gcc policyWatcher.c -I /usr/local/include/zookeeper/ /usr/local/lib/libzookeeper_mt.so cJSON.c utility.c parse.c -lm -g -w -o  policyWatcher
+gcc policyWatcher.c parse.c cJSON.c utility.c -I /usr/local/include/zookeeper/ /usr/local/lib/libzookeeper_mt.so /usr/lib64/libxml2.so -lm -w -o aa
+#gcc policyWatcher.c -I /usr/local/include/zookeeper/ /usr/include/libxml2/libxml/ /usr/local/lib/libzookeeper_mt.so  cJSON.c utility.c parse.c -lm -g -w -o  policyWatcher

@@ -1,12 +1,46 @@
 #include "policyWatcher.h"
 #include "parse.h"
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+#include "utility.h" 
 
+extern Global_conf global_conf;
 char macIp[IP_LENGTH] = "";
 char injectIp[IP_LENGTH] = "";
 char injectMask[IP_LENGTH] = "";
 char interfaceIp[IP_LENGTH] = "";
 int globalOutLimit = 0;
 //char clusterInfo[512][512] = {""};
+
+void parse_sys_conf(const char* data, size_t dataLen)
+{
+	traceEvent("Parser sys conf",data,"INFO");
+	//char xmlstr[]="<sys log='2' time='5'/>";
+	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
+	//xmlDocPtr pdoc = xmlParseMemory(xmlstr,strlen(xmlstr));
+	xmlNodePtr root = xmlDocGetRootElement(pdoc);
+	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
+	//fflush(stdout);
+	xmlChar* str_tmp = xmlGetProp(root,"log_level");
+	global_conf.sys_conf.log_level=*str_tmp;
+    str_tmp = xmlGetProp(root,"log_timeout");
+	memcpy(global_conf.sys_conf.log_timeout,str_tmp,strlen(str_tmp));
+	xmlFreeDoc(pdoc);
+	char msg[DATA_LENGTH];
+	sprintf(msg,"log_level:%s log_timeout:%s",global_conf.sys_conf.log_level,global_conf.sys_conf.log_timeout);
+	traceEvent("Parser sys conf end",msg,"INFO");
+
+}
+
+
+
+
+
+
+
+
+
+
 
 void parseMac(char *pMsg)
 {

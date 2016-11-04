@@ -89,8 +89,8 @@ struct mylist{
 };
 
 typedef struct sys_conf{
-	int log_level;
-	int output_timeout;
+	char log_level;
+	char log_timeout[5];
 }Sys_conf;
 typedef struct qos_node{
 	u_int srcip;
