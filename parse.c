@@ -31,7 +31,7 @@ void parse_sys_conf(const char* data, size_t dataLen)
 	traceEvent("Parser sys conf end",msg,"INFO");
 
 }
-void parse_policy(const char* data,size_t dataLen)
+void parsePolicyNew(const char* urlName,size_t nameLen,const char* qosData,size_t qosLen,const char* trustData,size_t trustLen,const char* blockData,size_t blockLen)
 {
 	traceEvent("Parser policy","loop parse","INFO");
 	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);

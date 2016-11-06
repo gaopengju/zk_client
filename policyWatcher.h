@@ -106,8 +106,11 @@ typedef struct trust_block_list{
 typedef struct domain_node{
 	char domain[URL_LENGTH];
 	Qos_node* qos_list;
+	Qos_node* qos_cur;
 	Trust_block_table* trust_list;
+	Trust_block_table* trust_list_cur;
 	Trust_block_table* block_list;
+	Trust_block_table* block_list_cur;
         struct domain_node* next;
 }Domain_node;
 
