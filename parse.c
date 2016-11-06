@@ -23,7 +23,7 @@ void parse_sys_conf(const char* data, size_t dataLen)
 	//fflush(stdout);
 	xmlChar* str_tmp = xmlGetProp(root,"log_level");
 	global_conf.sys_conf.log_level=*str_tmp;
-    str_tmp = xmlGetProp(root,"log_timeout");
+        str_tmp = xmlGetProp(root,"log_timeout");
 	memcpy(global_conf.sys_conf.log_timeout,str_tmp,strlen(str_tmp));
 	xmlFreeDoc(pdoc);
 	char msg[DATA_LENGTH];
@@ -31,6 +31,17 @@ void parse_sys_conf(const char* data, size_t dataLen)
 	traceEvent("Parser sys conf end",msg,"INFO");
 
 }
+void parse_policy(const char* data,size_t dataLen)
+{
+	traceEvent("Parser policy","loop parse","INFO");
+	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
+	//xmlDocPtr pdoc = xmlParseMemory(xmlstr,strlen(xmlstr));
+	xmlNodePtr root = xmlDocGetRootElement(pdoc);
+	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
+	//fflush(stdout);
+
+    
+
 
 
 
