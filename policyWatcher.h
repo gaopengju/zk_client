@@ -103,11 +103,17 @@ typedef struct trust_block_list{
 	char url[URL_LENGTH];
 	struct trust_block_table* next;
 }Trust_block_table;
-typedef struct global_conf{
-	Sys_conf sys_conf;
+typedef struct domain_node{
+	char domain[URL_LENGTH];
 	Qos_node* qos_list;
 	Trust_block_table* trust_list;
 	Trust_block_table* block_list;
+        struct domain_node* next;
+}Domain_node;
+
+typedef struct global_conf{
+	Sys_conf sys_conf;
+        Domain_node* domain_list;
 }Global_conf;
 
 extern zhandle_t* zhEngine;
