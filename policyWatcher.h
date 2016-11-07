@@ -39,6 +39,9 @@
 
 //gpj
 #define SYS_CONF_PATH                   "/sys"
+#define DOMAIN_CONF_PATH                "/policy"
+#define TRUST_CONF_PATH                 "/policy_data/trust_list"
+#define BLOCK_CONF_PATH                 "/policy_data/block_list"
 #define URL_LENGTH                      256
 
 //
@@ -104,19 +107,23 @@ typedef struct trust_block_list{
 	struct trust_block_table* next;
 }Trust_block_table;
 typedef struct domain_node{
-	char domain[URL_LENGTH];
+	char domainName[URL_LENGTH];
+	int cc_level;
+    int threshold_srcip;	
+    int threshold_url;	
 	Qos_node* qos_list;
 	Qos_node* qos_cur;
 	Trust_block_table* trust_list;
 	Trust_block_table* trust_list_cur;
 	Trust_block_table* block_list;
 	Trust_block_table* block_list_cur;
-        struct domain_node* next;
+    struct domain_node* next;
 }Domain_node;
 
 typedef struct global_conf{
 	Sys_conf sys_conf;
         Domain_node* domain_list;
+        Domain_node* domain_list_cur;
 }Global_conf;
 
 extern zhandle_t* zhEngine;

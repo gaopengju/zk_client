@@ -2,6 +2,7 @@
 #include "parse.h"
 #include <libxml/parser.h>
 #include <libxml/tree.h>
+#include <libxml/xpath.h>
 #include "utility.h" 
 
 extern Global_conf global_conf;
@@ -23,28 +24,131 @@ void parse_sys_conf(const char* data, size_t dataLen)
 	//fflush(stdout);
 	xmlChar* str_tmp = xmlGetProp(root,"log_level");
 	global_conf.sys_conf.log_level=*str_tmp;
-        str_tmp = xmlGetProp(root,"log_timeout");
+    str_tmp = xmlGetProp(root,"log_timeout");
 	memcpy(global_conf.sys_conf.log_timeout,str_tmp,strlen(str_tmp));
 	xmlFreeDoc(pdoc);
 	char msg[DATA_LENGTH];
-	sprintf(msg,"log_level:%s log_timeout:%s",global_conf.sys_conf.log_level,global_conf.sys_conf.log_timeout);
+	sprintf(msg,"log_level:%c log_timeout:%s",global_conf.sys_conf.log_level,global_conf.sys_conf.log_timeout);
 	traceEvent("Parser sys conf end",msg,"INFO");
 
 }
-void parsePolicyNew(const char* urlName,size_t nameLen,const char* qosData,size_t qosLen,const char* trustData,size_t trustLen,const char* blockData,size_t blockLen)
+void free_qos_list(Qos_node* qos_ptr)
+{
+	while(qos_ptr)
+	{
+		Qos_node* node_tmp = qos_ptr;
+		qos_ptr = qos_ptr->next;
+		free(node_tmp);
+	}
+}
+
+xmlXPathObjectPtr getNodeset(xmlDocPtr doc, const xmlChar *xpath)  
+{  
+	xmlXPathContextPtr context;  
+	xmlXPathObjectPtr result;  
+	context = xmlXPathNewContext(doc);  
+
+	if (context == NULL) {  
+		fprintf(stderr,"context is NULL\n");  
+		traceEvent("GetNodeset ","context is NULL","WARN");
+		return NULL;  
+	}  
+
+	result = xmlXPathEvalExpression(xpath, context);  
+	xmlXPathFreeContext(context);  
+	if (result == NULL) {  
+		fprintf(stderr,"xmlXPathEvalExpression return NULL\n");  
+		traceEvent("GetNodeset "," xmlXpathEvalExpression return NULL","WARN");
+		return NULL;  
+	}  
+
+	if (xmlXPathNodeSetIsEmpty(result->nodesetval)) {  
+		xmlXPathFreeObject(result);  
+		fprintf(stderr,"nodeset is empty\n");  
+		traceEvent("GetNodeset "," nodeset is empty","INFO");
+		return NULL;  
+	}  
+
+	return result;  
+} 
+
+
+void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,size_t baseLen,const char* trustData,size_t trustLen,const char* blockData,size_t blockLen,bool addFlag)
 {
 	traceEvent("Parser policy","loop parse","INFO");
-	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
-	//xmlDocPtr pdoc = xmlParseMemory(xmlstr,strlen(xmlstr));
+	//new domain add
+	Domain_node* set_domain_ptr = NULL;
+	if(false==addFlag){
+		Domain_node* domain_ptr = global_conf.domain_list;
+        for( ;domain_ptr;domain_ptr=domain_ptr->next){
+			if(memcmp(domain_ptr->domainName,urlName,nameLen)==0){
+				set_domain_ptr = domain_ptr;
+			}
+		}
+	}
+
+	if(NULL==set_domain_ptr)
+	    set_domain_ptr = malloc(sizeof(Domain_node));
+	if(NULL == global_conf.domain_list)
+	{
+		global_conf.domain_list = set_domain_ptr;
+
+	}else{
+		global_conf.domain_list_cur->next = set_domain_ptr;
+		global_conf.domain_list_cur = set_domain_ptr;
+	}
+	memcpy(set_domain_ptr->domainName,urlName,nameLen);
+	//qos, free first,and set
+	free_qos_list(set_domain_ptr->qos_list);
+
+	/*<root>
+	 * <Protect level='3' threshold_srcip='100' threshold_url='1000'/>
+	 * <Qos>
+	 *    <item srcip='123.123.123.123' url='abc.com' speed='1000'/>
+	 * </Qos>
+	 * <root/>
+	 * */
+	xmlDocPtr pdoc = xmlParseMemory(baseData,baseLen);
 	xmlNodePtr root = xmlDocGetRootElement(pdoc);
+	//xmlNodePtr qosNodePtr = root->xmlChildrenNode;
+	xmlChar* protectpath = ("/root/Protect");
+	xmlXPathObjectPtr protect_result = getNodeset(pdoc,protectpath);
+	if(NULL==protect_result){
+		traceEvent("Get Protect xml fail",urlName,"WARN");
+		return;
+	}
+	int i=0;
+	xmlNodeSetPtr Pnodeset = protect_result->nodesetval;
+	xmlNodePtr cur;
+    for(i=0;i<Pnodeset->nodeNr;i++){
+        cur = Pnodeset->nodeTab[i];
+		char level[8];
+		char th_srip[10];
+		char th_url[10];
+		char* levelptr = xmlGetProp(cur,(const xmlChar*)"level");
+		char* th_srcip_ptr = xmlGetProp(cur,(const xmlChar*)"threshold_srcip");
+		char* th_url_ptr = xmlGetProp(cur,(const xmlChar*)"threshold_url");
+		fprintf(stderr,"protect level:%s th_srcip:%s th_url:%s\n",levelptr,th_srcip_ptr,th_url_ptr);
+
+	}
+/* 
+	xmlChar* qospath = ("/root/Qos/item");
+	xmlXPathObjectPtr qos_result = getNodeset(pdoc,qospath);
+
+	xmlNodePtr subNode = xmlChildrenNode;
+	Qos_node* qos_ptr = set_domain_ptr->qos_list;
+	while(qosNodePtr){
+		qos_ptr = malloc(Qos_node);
+		
+	}
 	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
 	//fflush(stdout);
-
+*/
     
 
 
 
-
+}
 
 
 
