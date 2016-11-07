@@ -1538,7 +1538,7 @@ void  init_zk_for_test(zhandle_t* zkhandle)
 				sprintf(ermsg,"test create node failed no:%d data_len is %d",flag_create,strlen(test_nodes_value[i]));
 				traceEvent(ermsg ,test_nodes[i],"WARN");
 			}else{
-				traceEvent("test create node success ",test_nodes_value[i],"INFO");
+				traceEvent("test create node success ",test_nodes[i],"INFO");
 			}
 		}
 	}
@@ -1641,20 +1641,23 @@ void handle_policys_conf(int rc,const struct String_vector* strings,const struct
 		for(i=0;i<strings->count;i++){
 			sprintf(basePath,"/policy/%s",strings->data[i]);
 			sprintf(trustPath,"/policy_data/trust_list/%s",strings->data[i]);
-			sprintf(basePath,"/policy_data/block_list/%s",strings->data[i]);
+			sprintf(blockPath,"/policy_data/block_list/%s",strings->data[i]);
 			sprintf(domainName,"%s",strings->data[i]);
 			int domainLen = strlen(domainName);
-			traceEvent("Get policy item ",strings->data[i],"INFO");
-			char baseData[1048576];
+                        char msg[1024];
+                        sprintf(msg,"domain:%s,basePath:%s,tpath:%s,bpath:%s",domainName,basePath,trustPath,blockPath);
+			traceEvent("Get policy item %s ,basePath:%s tpath:%s,bpath:%s",msg,"INFO");
+			char baseData[1048];
 			int baseLen=0;
-			char trustData[1048576];
+			char trustData[1048];
 			int trustLen=0;
-			char blockData[1048576];
+			char blockData[1048];
 			int  blockLen=0;
 			struct Stat stat;
-			zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",baseData,&baseLen,&stat);
-			zoo_wget(zkhandle,trustPath,0,"watch_policy",trustData,&trustLen,&stat);
-			zoo_wget(zkhandle,blockPath,0,"watch_policy",blockData,&blockLen,&stat);
+			int f1 = zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",baseData,&baseLen,&stat);
+			int f2 = zoo_get(zkhandle,trustPath,0,trustData,&trustLen,NULL);
+			int f3 = zoo_get(zkhandle,blockPath,0,blockData,&blockLen,NULL);
+                        fprintf(stderr,"base:%s\ntrust:%s\nblock:%s\nf1:%d,f2:%d,f3:%d",baseData,trustData,blockData,f1,f2,f3);
 			parseDomainPolicy(domainName,domainLen,baseData,baseLen,trustData,trustLen,blockData,blockLen,true);
 		}
 	}

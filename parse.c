@@ -98,6 +98,7 @@ void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,s
 		global_conf.domain_list_cur = set_domain_ptr;
 	}
 	memcpy(set_domain_ptr->domainName,urlName,nameLen);
+        set_domain_ptr->domainName[nameLen]='\0';
 	//qos, free first,and set
 	free_qos_list(set_domain_ptr->qos_list);
 
