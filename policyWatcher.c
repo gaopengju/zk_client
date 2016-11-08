@@ -444,63 +444,12 @@ int check_exists( zhandle_t *zh, const char *path, char *nodeData, int zooNodeTy
 
 int init_check_zknode(zhandle_t *zkhandle)
 {
-    int sock;
     int hostfd, myidfd;
     struct sockaddr_in sin;
     struct ifreq ifr;
     int flag;
-
-	/*
-    sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock == -1)
-    {
-        perror("socket");
-        traceEvent("socket error ", "local ip", "ERROR");
-        return 0;
-    }
-    strncpy(ifr.ifr_name, ETH_NAME, IFNAMSIZ);
-    ifr.ifr_name[IFNAMSIZ - 1] = 0;
- 
-    if(ioctl(sock, SIOCGIFADDR, &ifr) < 0)
-    {
-        traceEvent("ioctl error ", "", "ERROR");
-        return 0;
-    }
-    memcpy(&sin, &ifr.ifr_addr, sizeof(sin));
-    sprintf(localIP, "%s", inet_ntoa(sin.sin_addr));
-
-    if((hostfd = open(HOST_NAME_FILE, O_RDONLY))<0)perror("open");
-    if((myidfd = open(ZOOKEEPER_ID_FILE, O_RDONLY))<0)perror("open");
-    
-    read(hostfd, hostName, sizeof(hostName));
-    read(myidfd, myid, sizeof(myid));
-
-    close(myidfd);
-    close(hostfd);
-    close(sock);
-    
-    sprintf(myStatus, "/status/%s", myid);
-    stringtrim(myStatus);
-
-    sprintf(myInjectRoute, "/config/injectroute/%s", myid);
-    stringtrim(myInjectRoute);
-
-    sprintf(myInjectInterface, "/config/injectinterface/%s", myid);
-    stringtrim(myInjectInterface);
-    
-    sprintf(myMac, "/config/mac/%s", myid);
-    stringtrim(myMac);
-
-    sprintf(groupThreshold, "/group/threshold/%s", myid);
-    stringtrim(groupThreshold);
-
-    remove(INJECT_CONFIG_FILE); 
-    remove(INTERFACE_CONFIG_FILE);
-    remove(IPMAC_CONFIG_FILE);
-   
-    mkdir("/var/log/ad-policy", S_IRWXU);
- */
-	char sys_default_conf[]="<sys log_level='4' log_timeout='10'/>";
+	
+	char sys_default_conf[]="{"sys":{"log_level":"1","log_timeout":"10"}}";
 	char init_node_path[][128] = {
 		"/sys",
 		"/policy",
@@ -1575,6 +1524,7 @@ void handle_sys_conf_data(int rc,const char* value,int value_len,const struct St
 	sprintf(msg,"rc:%d,value:%s ,value_len:%d, data:%s",rc,value,value_len,data);
 	traceEvent("Do handle_sys_conf_data",msg,"INFO");
 	memcpy(sysdata,value,value_len);
+	fprintf(stderr,"-------------------data:%s",sysdata);
 	parse_sys_conf(sysdata,value_len);
 }
 
@@ -1644,8 +1594,8 @@ void handle_policys_conf(int rc,const struct String_vector* strings,const struct
 			sprintf(blockPath,"/policy_data/block_list/%s",strings->data[i]);
 			sprintf(domainName,"%s",strings->data[i]);
 			int domainLen = strlen(domainName);
-                        char msg[1024];
-                        sprintf(msg,"domain:%s,basePath:%s,tpath:%s,bpath:%s",domainName,basePath,trustPath,blockPath);
+            char msg[1024];
+            sprintf(msg,"domain:%s,basePath:%s,tpath:%s,bpath:%s",domainName,basePath,trustPath,blockPath);
 			traceEvent("Get policy item %s ,basePath:%s tpath:%s,bpath:%s",msg,"INFO");
 			char baseData[1048];
 			int baseLen=0;
@@ -1654,17 +1604,23 @@ void handle_policys_conf(int rc,const struct String_vector* strings,const struct
 			char blockData[1048];
 			int  blockLen=0;
 			struct Stat stat;
+			/* 
 			int f1 = zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",baseData,&baseLen,&stat);
 			int f2 = zoo_get(zkhandle,trustPath,0,trustData,&trustLen,NULL);
 			int f3 = zoo_get(zkhandle,blockPath,0,blockData,&blockLen,NULL);
-                        fprintf(stderr,"base:%s\ntrust:%s\nblock:%s\nf1:%d,f2:%d,f3:%d",baseData,trustData,blockData,f1,f2,f3);
+             */
+
+			int f1 = zoo_wget(zkhandle,"/policy/gao",zkpolicy_watch,"watch_policy",baseData,&baseLen,&stat);
+			int f2 = zoo_get(zkhandle,trustPath,0,trustData,&trustLen,NULL);
+			int f3 = zoo_get(zkhandle,blockPath,0,blockData,&blockLen,NULL);
+            fprintf(stderr,"base:%s\ntrust:%s\nblock:%s\nf1:%d,f2:%d,f3:%d,zkhandle:%p",baseData,trustData,blockData,f1,f2,f3,zkhandle);
 			parseDomainPolicy(domainName,domainLen,baseData,baseLen,trustData,trustLen,blockData,blockLen,true);
 		}
 	}
 }
 
 
-void get_parse_conf(zkhandle)
+void get_parse_conf(zhandle_t* zk)
 {
 	//parse conf to xml tree
 	/* TODO:parse to xml directly
@@ -1680,17 +1636,24 @@ void get_parse_conf(zkhandle)
     char sysConf[DATA_LENGTH];
 	int  dataLen = sizeof(sysConf);
 	int flag;
-	flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
+    //flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
+	flag = zoo_get(zk,"/policy/gao",0,sysConf,&dataLen,NULL);
+	fprintf(stderr,"ggggggixxxxxxxx--------------%s,zk:%p",sysConf,zk);
 	if(ZOK!=flag){
 		traceEvent("Zoo awget sys conf failed ",SYS_CONF_PATH,"WARN");
 		return;
 	}
 	//loop parse policy for each domain
-	flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
+	//flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
+	flag = zoo_awget_children2(zk,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
 	if(ZOK!=flag){
 		traceEvent("Zoo awget children failed ",DOMAIN_CONF_PATH,"WARN");
 		return;
 	}
+}
+void test_call(int rc,const char* value, int value_len,struct Stat* stat,void* data)
+{
+	fprintf(stderr,"test---------%s",value);
 }
 
 void* watchGetThread() 
@@ -1713,15 +1676,35 @@ void* watchGetThread()
         return;
     }
 
+
+
     if(init_check_zknode(zkhandle))
         traceEvent("Check node ", "over", "INFO");
 
 	//for test init zk file
 	init_zk_for_test(zkhandle);
 
-    int zkType = isLeader();
+    //int zkType = isLeader();
     signal(SIGINT, stop);
 
+    char baseData[10240];
+	int baseLen=0;
+	struct Stat* stat;
+
+    char createPath[1024];
+	int pathLen=0;
+	//int ff = zoo_create(zkhandle,"/test","test|test !",strlen("test|test !"),&ZOO_OPEN_ACL_UNSAFE,0,createPath,&pathLen);
+	//fprintf(stderr,"create ------path:%s,len:%d,ff:%d\n",createPath,pathLen,ff);
+
+    //int flag = zoo_get(zkhandle,"/test",0,baseData,&baseLen,NULL);
+	//fprintf(stderr,"get test:%s,len:%d\n",baseData,baseLen);
+
+	//int f1 = zoo_aget(zkhandle,"/policy/gao",0,baseData,&baseLen,NULL);
+	//f1 = zoo_aget(zkhandle,"/policy/gao",0,test_call,"test");
+	//fprintf(stderr,"-----------------/////f1:%d,base:%s zkhandle:%p\n",f1,baseData,zkhandle);
+	
+    //int flag = zoo_get(zkhandle,"/policy/gao",0,baseData,&baseLen,NULL);
+	//fprintf(stderr,"gggggg--------------%s,zkhandle:%p",baseData,zkhandle);
 	//get and parse conf 
 	get_parse_conf(zkhandle);
 
