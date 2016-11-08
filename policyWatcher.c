@@ -449,7 +449,7 @@ int init_check_zknode(zhandle_t *zkhandle)
     struct ifreq ifr;
     int flag;
 	
-	char sys_default_conf[]="{"sys":{"log_level":"1","log_timeout":"10"}}";
+	char sys_default_conf[]="{\"sys\":{\"log_level\":\"1\",\"log_timer\":\"10\"}}";
 	char init_node_path[][128] = {
 		"/sys",
 		"/policy",
@@ -1636,16 +1636,16 @@ void get_parse_conf(zhandle_t* zk)
     char sysConf[DATA_LENGTH];
 	int  dataLen = sizeof(sysConf);
 	int flag;
-    //flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
-	flag = zoo_get(zk,"/policy/gao",0,sysConf,&dataLen,NULL);
-	fprintf(stderr,"ggggggixxxxxxxx--------------%s,zk:%p",sysConf,zk);
+        flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
+	//flag = zoo_get(zk,"/policy/gao",0,sysConf,&dataLen,NULL);
+	//fprintf(stderr,"ggggggixxxxxxxx--------------%s,zk:%p",sysConf,zk);
 	if(ZOK!=flag){
 		traceEvent("Zoo awget sys conf failed ",SYS_CONF_PATH,"WARN");
 		return;
 	}
 	//loop parse policy for each domain
 	//flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
-	flag = zoo_awget_children2(zk,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
+	flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
 	if(ZOK!=flag){
 		traceEvent("Zoo awget children failed ",DOMAIN_CONF_PATH,"WARN");
 		return;

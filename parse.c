@@ -15,21 +15,37 @@ int globalOutLimit = 0;
 
 void parse_sys_conf(const char* data, size_t dataLen)
 {
-	traceEvent("Parser sys conf",data,"INFO");
-	//char xmlstr[]="<sys log='2' time='5'/>";
-	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
-	//xmlDocPtr pdoc = xmlParseMemory(xmlstr,strlen(xmlstr));
-	xmlNodePtr root = xmlDocGetRootElement(pdoc);
-	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
-	//fflush(stdout);
-	xmlChar* str_tmp = xmlGetProp(root,"log_level");
-	global_conf.sys_conf.log_level=*str_tmp;
-    str_tmp = xmlGetProp(root,"log_timeout");
-	memcpy(global_conf.sys_conf.log_timeout,str_tmp,strlen(str_tmp));
-	xmlFreeDoc(pdoc);
-	char msg[DATA_LENGTH];
-	sprintf(msg,"log_level:%c log_timeout:%s",global_conf.sys_conf.log_level,global_conf.sys_conf.log_timeout);
-	traceEvent("Parser sys conf end",msg,"INFO");
+	traceEvent("Parser sys conf","get sys conf completed","INFO");
+        
+        cJSON* pJson = cJSON_Parse(data);
+        if(!pJson){
+	    traceEvent("Can not parse sys conf","","WARN");
+            return;
+         }
+	cJSON* cSys = cJSON_GetObjectItem(pJson,"sys");
+	cJSON* cLogLevel = cJSON_GetObjectItem(cSys,"log_level");
+	cJSON* cLogTimer = cJSON_GetObjectItem(cSys,"log_timer");
+        char log_level[4];
+        char log_timer[10];
+        strcpy(log_level,cLogLevel->valuestring);
+        strcpy(log_timer,cLogTimer->valuestring);
+        fprintf(stderr,"level:%s,timer:%s\n",log_level,log_timer);
+        
+
+//	//char xmlstr[]="<sys log='2' time='5'/>";
+//	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
+//	//xmlDocPtr pdoc = xmlParseMemory(xmlstr,strlen(xmlstr));
+//	xmlNodePtr root = xmlDocGetRootElement(pdoc);
+//	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
+//	//fflush(stdout);
+//	xmlChar* str_tmp = xmlGetProp(root,"log_level");
+//	global_conf.sys_conf.log_level=*str_tmp;
+//        str_tmp = xmlGetProp(root,"log_timeout");
+//	memcpy(global_conf.sys_conf.log_timeout,str_tmp,strlen(str_tmp));
+//	xmlFreeDoc(pdoc);
+//	char msg[DATA_LENGTH];
+//	sprintf(msg,"log_level:%c log_timeout:%s",global_conf.sys_conf.log_level,global_conf.sys_conf.log_timeout);
+//	traceEvent("Parser sys conf end",msg,"INFO");
 
 }
 void free_qos_list(Qos_node* qos_ptr)
