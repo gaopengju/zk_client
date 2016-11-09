@@ -15,7 +15,7 @@ int globalOutLimit = 0;
 
 void parse_sys_conf(const char* data, size_t dataLen)
 {
-	traceEvent("Parser sys conf","get sys conf completed","INFO");
+	traceEvent("Parser sys conf begin","get sys conf completed","INFO");
         
         cJSON* pJson = cJSON_Parse(data);
         if(!pJson){
@@ -27,10 +27,16 @@ void parse_sys_conf(const char* data, size_t dataLen)
 	cJSON* cLogTimer = cJSON_GetObjectItem(cSys,"log_timer");
         char log_level[4];
         char log_timer[10];
-        strcpy(log_level,cLogLevel->valuestring);
-        strcpy(log_timer,cLogTimer->valuestring);
-        fprintf(stderr,"level:%s,timer:%s\n",log_level,log_timer);
+		if(NULL!=cLogLevel && NULL!=cLogTimer){
+			strcpy(log_level,cLogLevel->valuestring);
+			strcpy(log_timer,cLogTimer->valuestring);
+			fprintf(stderr,"level:%s,timer:%s\n",log_level,log_timer);
+			fflush(stderr);
+		}else{
+			traceEvent("Get json object log_level or log_timer failed","","WARN");
+		}
         
+	traceEvent("Parser sys conf done-------------","get sys conf completed","INFO");
 
 //	//char xmlstr[]="<sys log='2' time='5'/>";
 //	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
@@ -88,6 +94,33 @@ xmlXPathObjectPtr getNodeset(xmlDocPtr doc, const xmlChar *xpath)
 	return result;  
 } 
 
+void parse_policy_base_conf(const char* domainName)
+{
+	traceEvent("Do parse policy base conf","","INFO");
+}
+void parse_policy_trust_list(const char* domainName)
+{
+	traceEvent("Do parse policy trust list","","INFO");
+
+}
+void parse_policy_block_list(const char* domainName)
+{
+	traceEvent("Do parse policy block list","","INFO");
+}
+
+void initDomainNode(Domain_node* domain_ptr)
+{
+	memset(domain_ptr->domainName,0,URL_LENGTH);
+	domain_ptr->cc_level = 0;
+	domain_ptr->threshold_srcip = 0;
+	domain_ptr->threshold_url = 0;
+	domain_ptr->qos_list = NULL;
+	domain_ptr->qos_cur = NULL;
+	domain_ptr->trust_list = NULL;
+	domain_ptr->block_list = NULL;
+	domain_ptr->next = NULL;
+	
+}
 
 void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,size_t baseLen,const char* trustData,size_t trustLen,const char* blockData,size_t blockLen,bool addFlag)
 {
@@ -103,8 +136,10 @@ void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,s
 		}
 	}
 
-	if(NULL==set_domain_ptr)
+	if(NULL==set_domain_ptr){
 	    set_domain_ptr = malloc(sizeof(Domain_node));
+		initDomainNode(set_domain_ptr);
+	}
 	if(NULL == global_conf.domain_list)
 	{
 		global_conf.domain_list = set_domain_ptr;
@@ -118,36 +153,63 @@ void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,s
 	//qos, free first,and set
 	free_qos_list(set_domain_ptr->qos_list);
 
-	/*<root>
-	 * <Protect level='3' threshold_srcip='100' threshold_url='1000'/>
-	 * <Qos>
-	 *    <item srcip='123.123.123.123' url='abc.com' speed='1000'/>
-	 * </Qos>
-	 * <root/>
-	 * */
-	xmlDocPtr pdoc = xmlParseMemory(baseData,baseLen);
-	xmlNodePtr root = xmlDocGetRootElement(pdoc);
-	//xmlNodePtr qosNodePtr = root->xmlChildrenNode;
-	xmlChar* protectpath = ("/root/Protect");
-	xmlXPathObjectPtr protect_result = getNodeset(pdoc,protectpath);
-	if(NULL==protect_result){
-		traceEvent("Get Protect xml fail",urlName,"WARN");
+	/*
+	 *baseData-- {"protect_level":"high","threshold_url":"100","threshold_srcip":"100","qos":{"policy":[{"https":"false","srcip":"1.1.1.1","url":"letv.com","each_srcip":"false","each_url":"false","value":"100"},{...}]}}
+	 *trustData--{"trust_list":[{"srcip":"1.1.1.1","url":"letv.com"},{..}]}
+	 *blockData--{"block_list":[{"srcip":"1.1.1.1","url":"letv.com"},{..}]}
+	 *
+	 **/
+	cJSON* pJson = cJSON_Parse(baseData);
+	if(NULL==pJson){
+		traceEvent("Json parse domain base conf failed and return",urlName,"WARN");
 		return;
 	}
-	int i=0;
-	xmlNodeSetPtr Pnodeset = protect_result->nodesetval;
-	xmlNodePtr cur;
-    for(i=0;i<Pnodeset->nodeNr;i++){
-        cur = Pnodeset->nodeTab[i];
-		char level[8];
-		char th_srip[10];
-		char th_url[10];
-		char* levelptr = xmlGetProp(cur,(const xmlChar*)"level");
-		char* th_srcip_ptr = xmlGetProp(cur,(const xmlChar*)"threshold_srcip");
-		char* th_url_ptr = xmlGetProp(cur,(const xmlChar*)"threshold_url");
-		fprintf(stderr,"protect level:%s th_srcip:%s th_url:%s\n",levelptr,th_srcip_ptr,th_url_ptr);
 
+		char protect_level[8];
+		char threshold_url[8];
+		char threshold_srcip[8];
+	cJSON* pPlevel = cJSON_GetObjectItem(pJson,"protect_level");
+	if(NULL!=pPlevel){
+		//get protect_level
+		strcpy(protect_level,pPlevel->valuestring);
 	}
+   cJSON* pThold_url = cJSON_GetObjectItem(pJson,"threshold_url");
+	if(NULL!=pThold_url){
+		//get protect_level
+		strcpy(threshold_url,pThold_url->valuestring);
+	}	
+ cJSON* pThold_srcip = cJSON_GetObjectItem(pJson,"threshold_srcip");
+	if(NULL!=pThold_srcip){
+		//get protect_level
+		strcpy(threshold_srcip,pThold_srcip->valuestring);
+	}	
+	char msg[1024];
+	sprintf(msg,"level:%s,T_url:%s,T_srcip:%s",protect_level,threshold_url,threshold_srcip);
+	traceEvent("Get base conf ",msg,"INFO");
+
+	//	xmlDocPtr pdoc = xmlParseMemory(baseData,baseLen);
+//	xmlNodePtr root = xmlDocGetRootElement(pdoc);
+//	//xmlNodePtr qosNodePtr = root->xmlChildrenNode;
+//	xmlChar* protectpath = ("/root/Protect");
+//	xmlXPathObjectPtr protect_result = getNodeset(pdoc,protectpath);
+//	if(NULL==protect_result){
+//		traceEvent("Get Protect xml fail",urlName,"WARN");
+//		return;
+//	}
+//	int i=0;
+//	xmlNodeSetPtr Pnodeset = protect_result->nodesetval;
+//	xmlNodePtr cur;
+//    for(i=0;i<Pnodeset->nodeNr;i++){
+//        cur = Pnodeset->nodeTab[i];
+//		char level[8];
+//		char th_srip[10];
+//		char th_url[10];
+//		char* levelptr = xmlGetProp(cur,(const xmlChar*)"level");
+//		char* th_srcip_ptr = xmlGetProp(cur,(const xmlChar*)"threshold_srcip");
+//		char* th_url_ptr = xmlGetProp(cur,(const xmlChar*)"threshold_url");
+//		fprintf(stderr,"protect level:%s th_srcip:%s th_url:%s\n",levelptr,th_srcip_ptr,th_url_ptr);
+
+//	}
 /* 
 	xmlChar* qospath = ("/root/Qos/item");
 	xmlXPathObjectPtr qos_result = getNodeset(pdoc,qospath);
@@ -161,8 +223,6 @@ void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,s
 	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
 	//fflush(stdout);
 */
-    
-
 
 
 }

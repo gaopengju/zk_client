@@ -1,5 +1,7 @@
 #include "policyWatcher.h"
 
+#define SPACE_1M 1048576
+#define SPACE_5M 1048576*5
 struct mylist myStr;
 struct String_vector myInjectroute;
 int initStatus = 0, curStatus = 0;
@@ -7,6 +9,11 @@ static int mycount = 0, num = 0;
 Global_conf global_conf;
 int32_t current_version;
 zhandle_t* zkhandle;
+volatile bool aopt_busy = false;
+
+char* PolicyBaseData;
+char* PolicyTrustData;
+char* PolicyBlockData;
 
 char myInjectRoute[LENGTH] = "", myInjectInterface[LENGTH] = "";
 char myMac[LENGTH] = "", myStatus[LENGTH] = "";
@@ -24,6 +31,14 @@ char zkEnv[LENGTH] = "";
 
 int count = 0, count1 = 0;
 
+void set_aopt_busy(bool flag)
+{
+	aopt_busy = flag;
+}
+bool get_aopt_busy()
+{
+	return aopt_busy;
+}
 void get_zookeeper_env()
 {
     sprintf(zkEnv ,"%s", getenv("ZOOKEEPER_HOME"));
@@ -455,7 +470,11 @@ int init_check_zknode(zhandle_t *zkhandle)
 		"/policy",
 		"/policy_data",
 		"/policy_data/trust_list",
-		"/policy_data/block_list"};
+		"/policy_data/trust_list/baidu.com",
+		"/policy_data/trust_list/letv.com",
+		"/policy_data/block_list",
+		"/policy_data/block_list/baidu.com",
+		"/policy_data/block_list/letv.com"};
 	int i=0;
 	for (i=0;i<sizeof(init_node_path)/128; i++){
 		if(0==i)
@@ -1430,49 +1449,28 @@ void watch_injectroute(zhandle_t* zh, int type, int state, const char* path, voi
     }
 }
 
-int get_watch_injectroute_policy(char *path)
-{
-    int zgcflag;
-    zgcflag = zoo_awget_children(zkhandle, path, watch_injectroute, NULL, injectroute_child_node, strdup(path));
-    if(zgcflag == ZOK)
-    {
-        sleep(1);
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}
 void  init_zk_for_test(zhandle_t* zkhandle)
 {
 	//init some data for test
 	char test_nodes[][512] = {
 	//	"/sys",
-		"/policy/baiducom",
+		"/policy/baidu.com",
 		"/policy/letv.com",
-		"/policy_data/trust_list/baidu.com",
-		"/policy_data/trust_list/letv.com",
-		"/policy_data/block_list/baidu.com",
-		"/policy_data/block_list/letv.com"
+		"/policy_data/trust_list/baidu.com/node1",
+		"/policy_data/trust_list/letv.com/node1",
+		"/policy_data/block_list/baidu.com/node1",
+		"/policy_data/block_list/letv.com/node1"
 	};
 	char test_nodes_value[][1024] = {
 	//	"<sys log_level=3 output_time=10/>",
-		"<root><Protect threshold_url='100' threshold_srcip='100'/>\
-			<QoS><policy https='false' srcip='1.1.1.1' url='baidu.com' each_srcip='false' each_url='true'>1111</policy>\
-			<policy https='false' srcip='1.1.1.1' url='baidu.com' each_srcip='false' each_url='true'>1111</policy>\
-			<policy https='false' srcip='1.1.1.1' url='baidu.com' each_srcip='false' each_url='true'>1111</policy>\
-			<policy https='false' srcip='1.1.1.1' url='baidu.com' each_srcip='false' each_url='true'>1111</policy></QoS></root>",
-
-		"<root><Protect level='high' threshold_url='200' threshold_srcip='200'/>\
-			<QoS><policy https='false' srcip='1.1.1.1' url='letv.com' each_srcip='false' each_url='true'>1111</policy>\
-			<policy https='false' srcip='1.1.1.1' url='letv.com' each_srcip='false' each_url='true'>1111</policy>\
-			<policy https='false' srcip='1.1.1.1' url='letv.com' each_srcip='false' each_url='true'>1111</policy>\
-			<policy https='false' srcip='1.1.1.1' url='letv.com' each_srcip='false' each_url='true'>1111</policy></QoS></root>",
-		"srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1'",
-		"srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='letv.com',srcip='1.1.1.1' url='letv.com',srcip='1.1.1.1' url='letv.com',srcip='1.1.1.1'",
-		"srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1'",
-		"srcip='1.1.1.1' url='baidu.com',srcip='1.1.1.1' url='letv.com',srcip='1.1.1.1' url='letv.com',srcip='1.1.1.1' url='letv.com',srcip='1.1.1.1'"
+	
+"{\"protect_level\":\"high\",\"threshold_url\":\"1000\",\"threshold_srcip\":\"200\",\"qos\":{\"policy\":[{\"https\":\"false\",\"srcip\":\"1.1.1.1\",\"url\":\"letv.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"},{\"https\":\"false\",\"srcip\":\"1.1.1.1\",\"url\":\"letv1.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"}]}}",
+	
+"{\"protect_level\":\"low\",\"threshold_url\":\"1000\",\"threshold_srcip\":\"200\",\"qos\":{\"policy\":[{\"https\":\"false\",\"srcip\":\"1.1.1.1\",\"url\":\"letv.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"},{\"https\":\"false\",\"srcip\":\"1.21.1.1\",\"url\":\"letv1.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"}]}}",
+"{\"trust_list\":[{\"srcip\":\"1.1.11.1\",\"url\":\"letv.com\"},{\"srcip\":\"1.1.11.1\",\"url\":\"letv22.com\"}]}",
+"{\"trust_list\":[{\"srcip\":\"2.1.11.1\",\"url\":\"letv2.com\"},{\"srcip\":\"1.1.11.1\",\"url\":\"letv22.com\"}]}",
+"{\"block_list\":[{\"srcip\":\"3.1.11.1\",\"url\":\"letv2.com\"},{\"srcip\":\"1.1.11.1\",\"url\":\"letv22.com\"}]}",
+"{\"block_list\":[{\"srcip\":\"4.1.11.1\",\"url\":\"letv2.com\"},{\"srcip\":\"1.1.11.1\",\"url\":\"letv22.com\"}]}"
 	};
 	int i=0;
 	struct Stat sta;
@@ -1511,7 +1509,6 @@ void sys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* watc
 		//set watch get value
 		zoo_wget(zh,path,sys_conf_watch,"watch_sys",sysData,&dataLen,&stat);
 		traceEvent("Sys conf changed",path,"INFO");
-		printf("sys conf is %s ",sysData);
 		parse_sys_conf(sysData,strlen(sysData));
 	}
 }
@@ -1526,6 +1523,7 @@ void handle_sys_conf_data(int rc,const char* value,int value_len,const struct St
 	memcpy(sysdata,value,value_len);
 	fprintf(stderr,"-------------------data:%s",sysdata);
 	parse_sys_conf(sysdata,value_len);
+	set_aopt_busy(false);
 }
 
 //policy_wather
@@ -1577,46 +1575,92 @@ void handle_policy_conf(int rc,const char* value, int value_len, const struct St
 	traceEvent("Do handle_policy_conf","handle  one item","INFO");
 }
 
+void handle_policy_base_conf(const char* domainName,const char* basePath)
+{
+	int dataLen = sizeof(PolicyBaseData);
+	memset(PolicyBaseData,0,dataLen);
+	struct Stat stat;
+	int flag = zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",PolicyBaseData,&dataLen,&stat);
+	parse_policy_base_conf(domainName);
+}
+void handle_policy_trust_conf(domainName,trustPath)
+{
+	struct String_vector curstrings;
+	struct Stat curstat;
+	int flag = zoo_get_children2(zkhandle,trustPath,false,&curstrings,&curstat);
+	if(ZOK==flag){
+		int i=0;
+		for(i=0;i<curstrings.count;i++){
+			char subPath[128];
+			strcat(subPath,trustPath);
+			strcat(subPath,curstrings.data[i]);
+			int trustLen = sizeof(PolicyTrustData);
+			memset(PolicyTrustData,0,trustLen);
+			int cflag = zoo_get(zkhandle,subPath,0,PolicyTrustData,&trustLen,NULL);
+			if(ZOK!=cflag){
+				traceEvent("Zoo get trust data failed",subPath,"WARN");
+			}else{
+				parse_policy_trust_list(domainName);
+			}
+		}
+	}
+}
+
+void handle_policy_block_conf(domainName,blockPath)
+{
+	struct String_vector curstrings;
+	struct Stat curstat;
+	int flag = zoo_get_children2(zkhandle,blockPath,false,&curstrings,&curstat);
+	if(ZOK==flag){
+		int i=0;
+		for(i=0;i<curstrings.count;i++){
+			char subPath[128];
+			strcat(subPath,blockPath);
+			strcat(subPath,curstrings.data[i]);
+			int blockLen = sizeof(PolicyBlockData);
+			memset(PolicyBlockData,0,blockLen);
+			int cflag = zoo_get(zkhandle,subPath,0,PolicyBlockData,&blockLen,NULL);
+			if(ZOK!=cflag){
+				traceEvent("Zoo get trust data failed",subPath,"WARN");
+			}else{
+				parse_policy_block_list(domainName);
+			}
+		}
+	}
+}
+
+void handle_each_policy(const char* domain_name)
+{
+	//
+	char basePath[128];
+	char trustPath[128];
+	char blockPath[128];
+	char domainName[128];
+	sprintf(basePath,"/policy/%s",domain_name);
+	//TODO:maybe has many trust_list nodes,need to join them
+	sprintf(trustPath,"/policy_data/trust_list/%s",domain_name);
+	sprintf(blockPath,"/policy_data/block_list/%s",domain_name);
+	sprintf(domainName,"%s",domain_name);
+	int domainLen = strlen(domainName);
+
+    handle_policy_base_conf(domainName,basePath);
+    handle_policy_trust_conf(domainName,trustPath);
+    handle_policy_block_conf(domainName,blockPath);
+
+    //policyToFile();
+}
 
 //do handle policys conf
 void handle_policys_conf(int rc,const struct String_vector* strings,const struct Stat* stat,const void* data)
 {
-	char basePath[DATA_LENGTH];
-	char trustPath[DATA_LENGTH];
-	char blockPath[DATA_LENGTH];
-	char domainName[DATA_LENGTH];
 	traceEvent("Do handle_policys_conf","handle sub items","INFO");
 	int i,flag;
 	if(strings){
 		for(i=0;i<strings->count;i++){
-			sprintf(basePath,"/policy/%s",strings->data[i]);
-			sprintf(trustPath,"/policy_data/trust_list/%s",strings->data[i]);
-			sprintf(blockPath,"/policy_data/block_list/%s",strings->data[i]);
-			sprintf(domainName,"%s",strings->data[i]);
-			int domainLen = strlen(domainName);
-            char msg[1024];
-            sprintf(msg,"domain:%s,basePath:%s,tpath:%s,bpath:%s",domainName,basePath,trustPath,blockPath);
-			traceEvent("Get policy item %s ,basePath:%s tpath:%s,bpath:%s",msg,"INFO");
-			char baseData[1048];
-			int baseLen=0;
-			char trustData[1048];
-			int trustLen=0;
-			char blockData[1048];
-			int  blockLen=0;
-			struct Stat stat;
-			/* 
-			int f1 = zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",baseData,&baseLen,&stat);
-			int f2 = zoo_get(zkhandle,trustPath,0,trustData,&trustLen,NULL);
-			int f3 = zoo_get(zkhandle,blockPath,0,blockData,&blockLen,NULL);
-             */
-
-			int f1 = zoo_wget(zkhandle,"/policy/gao",zkpolicy_watch,"watch_policy",baseData,&baseLen,&stat);
-			int f2 = zoo_get(zkhandle,trustPath,0,trustData,&trustLen,NULL);
-			int f3 = zoo_get(zkhandle,blockPath,0,blockData,&blockLen,NULL);
-            fprintf(stderr,"base:%s\ntrust:%s\nblock:%s\nf1:%d,f2:%d,f3:%d,zkhandle:%p",baseData,trustData,blockData,f1,f2,f3,zkhandle);
-			parseDomainPolicy(domainName,domainLen,baseData,baseLen,trustData,trustLen,blockData,blockLen,true);
+			handle_each_policy(strings->data[i]);
 		}
 	}
+	set_aopt_busy(false);
 }
 
 
@@ -1624,31 +1668,28 @@ void get_parse_conf(zhandle_t* zk)
 {
 	//parse conf to xml tree
 	/* TODO:parse to xml directly
-	<sys log_level=1 output_time=10 />
-	<policy url='letv.com'>
-	    <qos><item srcip='1.1.1.1' url=''>100</item><item srcip='2.2.2.2' url='bb.com'></item></qos>
-		<true_list><item srcip='1.1.1.1' url=''><item srcip='2.2.2.2' url=''></trust_list>
-		<block_list><item srcip='2.2.2.2' url='ss.com'><item srcip='3.3.3.3' url=''></block_list>
-	</policy>
-	<policy></policy>
-	*/
+    */
 
     char sysConf[DATA_LENGTH];
 	int  dataLen = sizeof(sysConf);
-	int flag;
-        flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
-	//flag = zoo_get(zk,"/policy/gao",0,sysConf,&dataLen,NULL);
-	//fprintf(stderr,"ggggggixxxxxxxx--------------%s,zk:%p",sysConf,zk);
+	set_aopt_busy(true);
+    int  flag = zoo_awget(zkhandle,SYS_CONF_PATH,sys_conf_watch,"sys_conf_change",handle_sys_conf_data,"changed");
 	if(ZOK!=flag){
 		traceEvent("Zoo awget sys conf failed ",SYS_CONF_PATH,"WARN");
 		return;
 	}
+	while(get_aopt_busy()){
+		sleep(1);
+	}
 	//loop parse policy for each domain
-	//flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
+	set_aopt_busy(true);
 	flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
 	if(ZOK!=flag){
 		traceEvent("Zoo awget children failed ",DOMAIN_CONF_PATH,"WARN");
 		return;
+	}
+	while(get_aopt_busy()){
+		sleep(1);
 	}
 }
 void test_call(int rc,const char* value, int value_len,struct Stat* stat,void* data)
@@ -1684,27 +1725,13 @@ void* watchGetThread()
 	//for test init zk file
 	init_zk_for_test(zkhandle);
 
-    //int zkType = isLeader();
+    int zkType = isLeader();
     signal(SIGINT, stop);
 
-    char baseData[10240];
-	int baseLen=0;
-	struct Stat* stat;
-
-    char createPath[1024];
-	int pathLen=0;
-	//int ff = zoo_create(zkhandle,"/test","test|test !",strlen("test|test !"),&ZOO_OPEN_ACL_UNSAFE,0,createPath,&pathLen);
-	//fprintf(stderr,"create ------path:%s,len:%d,ff:%d\n",createPath,pathLen,ff);
-
-    //int flag = zoo_get(zkhandle,"/test",0,baseData,&baseLen,NULL);
-	//fprintf(stderr,"get test:%s,len:%d\n",baseData,baseLen);
-
-	//int f1 = zoo_aget(zkhandle,"/policy/gao",0,baseData,&baseLen,NULL);
-	//f1 = zoo_aget(zkhandle,"/policy/gao",0,test_call,"test");
-	//fprintf(stderr,"-----------------/////f1:%d,base:%s zkhandle:%p\n",f1,baseData,zkhandle);
-	
-    //int flag = zoo_get(zkhandle,"/policy/gao",0,baseData,&baseLen,NULL);
-	//fprintf(stderr,"gggggg--------------%s,zkhandle:%p",baseData,zkhandle);
+	//alloc space for conf 
+    PolicyBaseData = malloc(SPACE_1M);
+	PolicyTrustData = malloc(SPACE_5M);
+	PolicyBlockData = malloc(SPACE_5M);
 	//get and parse conf 
 	get_parse_conf(zkhandle);
 
@@ -1714,15 +1741,6 @@ void* watchGetThread()
     get_global_policy(GLOBAL_POLICY_ZK);
     get_group_policy(GROUP_POLICY_ZK, &myStr);
 
-    get_config_policy(myMac);
-    get_config_policy(myInjectInterface);
-
-    watch_status("/status");    
-    watch_group_policy(GROUP_POLICY_ZK, "group_policy");
-    watch_config(zkhandle, GLOBAL_POLICY_ZK, "globalpolicy_watch");
-
-    watch_config(zkhandle, myMac, "mac_watch");
-    watch_config(zkhandle, myInjectInterface, "injectInterface_watch");
    
     get_watch_injectroute_policy(myInjectRoute); 
     loop_watch_policy();
