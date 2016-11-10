@@ -32,17 +32,11 @@
 #define GROUP_POLICY_TYPE		1
 #define GROUP_THRESHOLD_TYPE		2
 
-#define IP_LENGTH                       16
+// #define IP_LENGTH                       16
 #define LENGTH                          512
 #define DATA_LENGTH                     1024
 #define LONG_DATA_LENGTH                2048
 
-//gpj
-#define SYS_CONF_PATH                   "/sys"
-#define DOMAIN_CONF_PATH                "/policy"
-#define TRUST_CONF_PATH                 "/policy_data/trust_list"
-#define BLOCK_CONF_PATH                 "/policy_data/block_list"
-#define URL_LENGTH                      256
 
 //
 #define ETH_NAME                        "eth1" 
@@ -91,40 +85,40 @@ struct mylist{
     int64_t mzxid[40960];
 };
 
-typedef struct sys_conf{
-	char log_level;
-	char log_timeout[5];
-}Sys_conf;
-typedef struct qos_node{
-	u_int srcip;
-	char url[URL_LENGTH];
-	u_int speed;
-	struct qos_node* next;
-}Qos_node;
-typedef struct trust_block_list{
-	u_int srcip;
-	char url[URL_LENGTH];
-	struct trust_block_table* next;
-}Trust_block_table;
-typedef struct domain_node{
-	char domainName[URL_LENGTH];
-	int cc_level;
-    int threshold_srcip;	
-    int threshold_url;	
-	Qos_node* qos_list;
-	Qos_node* qos_cur;
-	Trust_block_table* trust_list;
-	Trust_block_table* trust_list_cur;
-	Trust_block_table* block_list;
-	Trust_block_table* block_list_cur;
-    struct domain_node* next;
-}Domain_node;
-
-typedef struct global_conf{
-	Sys_conf sys_conf;
-        Domain_node* domain_list;
-        Domain_node* domain_list_cur;
-}Global_conf;
+// typedef struct sys_conf{
+// 	char log_level;
+// 	char log_timeout[5];
+// }Sys_conf;
+// typedef struct qos_node{
+// 	u_int srcip;
+// 	char url[URL_LENGTH];
+// 	u_int speed;
+// 	struct qos_node* next;
+// }Qos_node;
+// typedef struct trust_block_list{
+// 	u_int srcip;
+// 	char url[URL_LENGTH];
+// 	struct trust_block_table* next;
+// }Trust_block_table;
+// typedef struct domain_node{
+// 	char domainName[URL_LENGTH];
+// 	int cc_level;
+//     int threshold_srcip;	
+//     int threshold_url;	
+// 	Qos_node* qos_list;
+// 	Qos_node* qos_list_cur;
+// 	Trust_block_table* trust_list;
+// 	Trust_block_table* trust_list_cur;
+// 	Trust_block_table* block_list;
+// 	Trust_block_table* block_list_cur;
+//     struct domain_node* next;
+// }Domain_node;
+// 
+// typedef struct global_conf{
+// 	Sys_conf sys_conf;
+//         Domain_node* domain_list;
+//         Domain_node* domain_list_cur;
+// }Global_conf;
 
 extern zhandle_t* zhEngine;
 extern struct String_vector myGroThreshold;
@@ -156,3 +150,5 @@ extern void parseGlobalThreshold(char *pMsg);
 extern int isLeader();
 
 extern void parseGlobalPolicy(char *pMsg);
+
+extern void handle_each_policy(const char* domain_name,bool new_flag);

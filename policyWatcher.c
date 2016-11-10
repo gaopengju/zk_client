@@ -1,7 +1,8 @@
 #include "policyWatcher.h"
+#include "list_struct.h"
 
-#define SPACE_1M 1048576
-#define SPACE_5M 1048576*5
+int SPACE_1M=1048576;
+int SPACE_5M=1048576*5;
 struct mylist myStr;
 struct String_vector myInjectroute;
 int initStatus = 0, curStatus = 0;
@@ -1564,10 +1565,39 @@ void zkpolicy_watch(zhandle_t* zh,int type,int state,const char* path,void* wath
        //parse and set policy
 	   //TODO:
 
-		traceEvent("zkpolicy watch delete event",path,"INFO");
+		traceEvent("zkpolicy watch changed event",path,"INFO");
+		fprintf(stderr,"changed---------path:%s\n",path);
+		//get domain name from path
+		char subPath[DOMAIN_LENGTH];
+		strcpy(subPath,path);
+		//fprintf(stderr,"changed1---------ptr:%s\n",ptr);
+		char* ptr = strtok(subPath,"/");
+
+		fprintf(stderr,"changed1---------ptr:%s\n",ptr);
+		ptr = strtok(NULL,"/");
+		fprintf(stderr,"changed2---------ptr:%s\n",ptr);
+		fflush(stderr);
+
+        handle_each_policy(ptr,false);
 	}
 	
 }
+
+void initDomainNode(Domain_node* domain_ptr)
+{
+	memset(domain_ptr->domainName,0,URL_LENGTH);
+	//domain_ptr->cc_level = 0;
+	memset(domain_ptr->cc_level,0,S_LENGTH);
+	domain_ptr->threshold_srcip = 0;
+	domain_ptr->threshold_url = 0;
+	domain_ptr->qos_list = NULL;
+	domain_ptr->qos_list_cur = NULL;
+	domain_ptr->trust_list = NULL;
+	domain_ptr->block_list = NULL;
+	domain_ptr->next = NULL;
+	
+}
+
 
 //handle one policy conf
 void handle_policy_conf(int rc,const char* value, int value_len, const struct Stat* stat,const void* data)
@@ -1575,16 +1605,97 @@ void handle_policy_conf(int rc,const char* value, int value_len, const struct St
 	traceEvent("Do handle_policy_conf","handle  one item","INFO");
 }
 
-void handle_policy_base_conf(const char* domainName,const char* basePath)
+void clear_domain_node(Domain_node* domain_node)
 {
-	int dataLen = sizeof(PolicyBaseData);
+	memset(domain_node->domainName,0,DOMAIN_LENGTH);
+	memset(domain_node->cc_level,0,S_LENGTH);
+	domain_node->threshold_url = 0;
+	domain_node->threshold_srcip = 0;
+	{
+		Qos_node* qos_tmp = domain_node->qos_list;
+		Qos_node* qos_del;
+		while(qos_tmp){
+			qos_del = qos_tmp;
+			qos_tmp = qos_tmp->next;
+			free(qos_del);
+		}
+		domain_node->qos_list = NULL;
+		domain_node->qos_list_cur = NULL;
+	}
+	{
+		Trust_block_table* trust_tmp = domain_node->trust_list;
+		Trust_block_table* trust_del;
+		while(trust_tmp){
+			trust_del = trust_tmp;
+			trust_tmp = trust_tmp->next;
+			free(trust_del);
+		}
+		domain_node->trust_list = NULL;
+		domain_node->trust_list_cur = NULL;
+	}
+	{
+		Trust_block_table* block_tmp = domain_node->block_list;
+		Trust_block_table* block_del;
+		while(block_tmp){
+			block_del = block_tmp;
+			block_tmp = block_tmp->next;
+			free(block_del);
+		}
+		domain_node->block_list = NULL;
+		domain_node->block_list_cur = NULL;
+	}
+}
+Domain_node* search_node(const char* domainName)
+{
+	Domain_node* find_node = global_conf.domain_list_cur;
+	if(NULL == find_node){
+		return NULL;
+	}else{
+		if(strcmp(domainName,find_node->domainName)==0){
+			return find_node;
+		}
+	}
+	find_node = global_conf.domain_list;
+    while(find_node){
+		if(strcmp(domainName,find_node->domainName)==0){
+			return find_node;
+		}
+		find_node = find_node->next;
+	}
+	return find_node;
+}
+Domain_node* handle_policy_base_conf(const char* domainName,const char* basePath,bool new_flag)
+{
+	int dataLen = SPACE_1M;
 	memset(PolicyBaseData,0,dataLen);
 	struct Stat stat;
 	int flag = zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",PolicyBaseData,&dataLen,&stat);
-	parse_policy_base_conf(domainName);
+	fprintf(stderr,"zoo_wget dataLen:%d, PolicyBaseData:%s\n",dataLen,PolicyBaseData);
+	fflush(stderr);
+	Domain_node* set_domain_node = NULL;
+	if(!new_flag){
+		//domain exists: search first,then reset it. 
+		set_domain_node = search_node(domainName);
+		if(set_domain_node)
+			clear_domain_node(set_domain_node);
+	}
+	//new_flag or not found ,create and add to Domain_node_list
+	if(!set_domain_node){
+	    set_domain_node = malloc(sizeof(Domain_node));
+		if(!set_domain_node){
+			traceEvent("Create Domain node failed","","WARN");
+			return NULL;
+		}
+		initDomainNode(set_domain_node);
+	}
+	if(0==parse_policy_base_conf(domainName,set_domain_node))
+		return set_domain_node;
+	else
+		return NULL;
 }
-void handle_policy_trust_conf(domainName,trustPath)
+void handle_policy_trust_conf(const char* domainName,const char* trustPath,Domain_node* setDomainNode)
 {
+	traceEvent("Handle_trust conf",domainName,"INFO");
 	struct String_vector curstrings;
 	struct Stat curstat;
 	int flag = zoo_get_children2(zkhandle,trustPath,false,&curstrings,&curstat);
@@ -1592,21 +1703,24 @@ void handle_policy_trust_conf(domainName,trustPath)
 		int i=0;
 		for(i=0;i<curstrings.count;i++){
 			char subPath[128];
-			strcat(subPath,trustPath);
-			strcat(subPath,curstrings.data[i]);
-			int trustLen = sizeof(PolicyTrustData);
+			memset(subPath,0,128);
+			sprintf(subPath,"%s/%s",trustPath,curstrings.data[i]);
+			int trustLen = SPACE_1M;
 			memset(PolicyTrustData,0,trustLen);
 			int cflag = zoo_get(zkhandle,subPath,0,PolicyTrustData,&trustLen,NULL);
 			if(ZOK!=cflag){
 				traceEvent("Zoo get trust data failed",subPath,"WARN");
 			}else{
-				parse_policy_trust_list(domainName);
+				char msg[1024];
+				sprintf(msg,"PolicTrustData:%s",PolicyTrustData);
+				traceEvent("Got PolicyTrustData ",msg,"INFO");
+				parse_policy_trust_list(domainName,setDomainNode);
 			}
 		}
 	}
 }
 
-void handle_policy_block_conf(domainName,blockPath)
+void handle_policy_block_conf(const char* domainName,const char* blockPath,Domain_node* setDomainNode)
 {
 	struct String_vector curstrings;
 	struct Stat curstat;
@@ -1615,21 +1729,23 @@ void handle_policy_block_conf(domainName,blockPath)
 		int i=0;
 		for(i=0;i<curstrings.count;i++){
 			char subPath[128];
-			strcat(subPath,blockPath);
-			strcat(subPath,curstrings.data[i]);
-			int blockLen = sizeof(PolicyBlockData);
+			memset(subPath,0,128);
+			sprintf(subPath,"%s/%s",blockPath,curstrings.data[i]);
+			fprintf(stderr,"g-------ggggggg---subpath:%s,getpath:%s",subPath,curstrings.data[i]);
+			fflush(stderr);
+			int blockLen = SPACE_1M; 
 			memset(PolicyBlockData,0,blockLen);
 			int cflag = zoo_get(zkhandle,subPath,0,PolicyBlockData,&blockLen,NULL);
 			if(ZOK!=cflag){
 				traceEvent("Zoo get trust data failed",subPath,"WARN");
 			}else{
-				parse_policy_block_list(domainName);
+				parse_policy_block_list(domainName,setDomainNode);
 			}
 		}
 	}
 }
 
-void handle_each_policy(const char* domain_name)
+void handle_each_policy(const char* domain_name,bool new_flag)
 {
 	//
 	char basePath[128];
@@ -1642,10 +1758,16 @@ void handle_each_policy(const char* domain_name)
 	sprintf(blockPath,"/policy_data/block_list/%s",domain_name);
 	sprintf(domainName,"%s",domain_name);
 	int domainLen = strlen(domainName);
+	fprintf(stderr,"bpath:%s,tpath:%s,bpath:%s\n",basePath,trustPath,blockPath);
+	fflush(stderr);
 
-    handle_policy_base_conf(domainName,basePath);
-    handle_policy_trust_conf(domainName,trustPath);
-    handle_policy_block_conf(domainName,blockPath);
+	Domain_node* set_domain_node = handle_policy_base_conf(domainName,basePath,new_flag);
+	if(set_domain_node){
+		handle_policy_trust_conf(domainName,trustPath,set_domain_node);
+		handle_policy_block_conf(domainName,blockPath,set_domain_node);
+	}else{
+		traceEvent("Parse base conf fail ,will not parse trust/block list",domainName,"WARN");
+	}
 
     //policyToFile();
 }
@@ -1657,7 +1779,7 @@ void handle_policys_conf(int rc,const struct String_vector* strings,const struct
 	int i,flag;
 	if(strings){
 		for(i=0;i<strings->count;i++){
-			handle_each_policy(strings->data[i]);
+			handle_each_policy(strings->data[i],true);
 		}
 	}
 	set_aopt_busy(false);
@@ -1683,7 +1805,7 @@ void get_parse_conf(zhandle_t* zk)
 	}
 	//loop parse policy for each domain
 	set_aopt_busy(true);
-	flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"zoo_awget_children2_data");
+	flag = zoo_awget_children2(zkhandle,DOMAIN_CONF_PATH,policys_conf_watch,"policy_changed",handle_policys_conf,"init_policy");
 	if(ZOK!=flag){
 		traceEvent("Zoo awget children failed ",DOMAIN_CONF_PATH,"WARN");
 		return;
@@ -1701,7 +1823,8 @@ void* watchGetThread()
 {
     int i, j;
     int timeout = 30000;
-    const char *host = "localhost:2181";
+    //const char *host = "localhost:2181";
+    const char *host = "123.59.102.104:2181";
     
     get_zookeeper_env();
     zoo_set_debug_level(ZOO_LOG_LEVEL_ERROR);
@@ -1723,7 +1846,7 @@ void* watchGetThread()
         traceEvent("Check node ", "over", "INFO");
 
 	//for test init zk file
-	init_zk_for_test(zkhandle);
+	//init_zk_for_test(zkhandle);
 
     int zkType = isLeader();
     signal(SIGINT, stop);
