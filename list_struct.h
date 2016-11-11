@@ -35,8 +35,8 @@
 #define URL_LENGTH                      256
 
 typedef struct sys_conf{
-	char log_level;
-	char log_timeout[5];
+	int log_level;
+	int log_timer;
 }Sys_conf;
 typedef struct qos_node{
 	bool https;
@@ -44,7 +44,7 @@ typedef struct qos_node{
 	char url[URL_LENGTH];
 	bool each_srcip;
 	bool each_url;
-	char speed[M_LENGTH];
+	int  speed;
 	struct qos_node* next;
 }Qos_node;
 typedef struct trust_block_list{
@@ -63,6 +63,7 @@ typedef struct domain_node{
 	Trust_block_table* trust_list_cur;
 	Trust_block_table* block_list;
 	Trust_block_table* block_list_cur;
+    struct domain_node* pre;
     struct domain_node* next;
 }Domain_node;
 

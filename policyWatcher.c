@@ -1539,7 +1539,7 @@ void policys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* 
 	if(ZOO_CREATED_EVENT==type){
 		traceEvent("Policy conf create event",path,"WARN");
 	}else if (ZOO_DELETED_EVENT==type){
-		traceEvent("Policy conf create event",path,"WARN");
+		traceEvent("Policys conf delete event",path,"WARN");
 	}else if (ZOO_CHANGED_EVENT==type){
 		// /policy node changed! should not here!
 		char sysData[DATA_LENGTH] = "";
@@ -1547,9 +1547,12 @@ void policys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* 
 		struct Stat stat;
 		//set watch get value
 		zoo_wget(zh,path,policys_conf_watch,"watch_sys",sysData,&dataLen,&stat);
-		traceEvent("Policy conf changed",path,"INFO");
-		//printf("sys conf is %s ",sysData);
-		//handle_policys_conf(sysData,strlen(sysData));
+		traceEvent("Policys conf changed ",path,"INFO");
+	}else if (ZOO_CHILD_EVENT==type){
+		traceEvent("Policys conf child event ",path,"INFO");
+		struct String_vector childStrings;
+		struct Stat stat;
+		zoo_wget_children2(zh,path,policys_conf_watch,watchCtx,&childStrings,&stat);
 	}
 }
 //do handle one policy conf
@@ -1561,24 +1564,29 @@ void zkpolicy_watch(zhandle_t* zh,int type,int state,const char* path,void* wath
 		traceEvent("zkpolicy watch create event",path,"INFO");
 	}else if(ZOO_DELETED_EVENT==type){
 		traceEvent("zkpolicy watch delete event",path,"INFO");
+		//TODO: delete the node
+		char subPath[DOMAIN_LENGTH];
+		strcpy(subPath,path);
+		//fprintf(stderr,"changed1---------ptr:%s\n",ptr);
+		char* ptr = strtok(subPath,"/");
+		ptr = strtok(NULL,"/");
+		fprintf(stderr,"delete node---------ptr:%s\n",ptr);
+		fflush(stderr);
+        handle_del_policy(ptr);
+
 	}else if(ZOO_CHANGED_EVENT==type){
        //parse and set policy
-	   //TODO:
-
 		traceEvent("zkpolicy watch changed event",path,"INFO");
-		fprintf(stderr,"changed---------path:%s\n",path);
 		//get domain name from path
 		char subPath[DOMAIN_LENGTH];
 		strcpy(subPath,path);
 		//fprintf(stderr,"changed1---------ptr:%s\n",ptr);
 		char* ptr = strtok(subPath,"/");
-
 		fprintf(stderr,"changed1---------ptr:%s\n",ptr);
 		ptr = strtok(NULL,"/");
 		fprintf(stderr,"changed2---------ptr:%s\n",ptr);
 		fflush(stderr);
-
-        handle_each_policy(ptr,false);
+        handle_each_policy(ptr,false); //false: not new node,just changed
 	}
 	
 }
@@ -1594,15 +1602,8 @@ void initDomainNode(Domain_node* domain_ptr)
 	domain_ptr->qos_list_cur = NULL;
 	domain_ptr->trust_list = NULL;
 	domain_ptr->block_list = NULL;
+	domain_ptr->pre = NULL;
 	domain_ptr->next = NULL;
-	
-}
-
-
-//handle one policy conf
-void handle_policy_conf(int rc,const char* value, int value_len, const struct Stat* stat,const void* data)
-{
-	traceEvent("Do handle_policy_conf","handle  one item","INFO");
 }
 
 void clear_domain_node(Domain_node* domain_node)
@@ -1645,7 +1646,7 @@ void clear_domain_node(Domain_node* domain_node)
 		domain_node->block_list_cur = NULL;
 	}
 }
-Domain_node* search_node(const char* domainName)
+Domain_node* searchDomainNode(const char* domainName)
 {
 	Domain_node* find_node = global_conf.domain_list_cur;
 	if(NULL == find_node){
@@ -1664,6 +1665,19 @@ Domain_node* search_node(const char* domainName)
 	}
 	return find_node;
 }
+void insertDomainList(Domain_node* node)
+{
+	if(NULL==global_conf.domain_list_cur){
+		//first node
+		global_conf.domain_list = node;
+		global_conf.domain_list_cur = node;
+	}else{
+		//has nodes already
+		global_conf.domain_list_cur->next = node;
+		node->pre = global_conf.domain_list_cur;
+		global_conf.domain_list_cur = node;
+	}
+}
 Domain_node* handle_policy_base_conf(const char* domainName,const char* basePath,bool new_flag)
 {
 	int dataLen = SPACE_1M;
@@ -1675,7 +1689,7 @@ Domain_node* handle_policy_base_conf(const char* domainName,const char* basePath
 	Domain_node* set_domain_node = NULL;
 	if(!new_flag){
 		//domain exists: search first,then reset it. 
-		set_domain_node = search_node(domainName);
+		set_domain_node = searchDomainNode(domainName);
 		if(set_domain_node)
 			clear_domain_node(set_domain_node);
 	}
@@ -1687,6 +1701,8 @@ Domain_node* handle_policy_base_conf(const char* domainName,const char* basePath
 			return NULL;
 		}
 		initDomainNode(set_domain_node);
+		//insert this node to domain list
+		insertDomainList(set_domain_node);
 	}
 	if(0==parse_policy_base_conf(domainName,set_domain_node))
 		return set_domain_node;
@@ -1770,6 +1786,22 @@ void handle_each_policy(const char* domain_name,bool new_flag)
 	}
 
     //policyToFile();
+}
+void handle_del_policy(const char* domainName)
+{
+	//find node in list
+	Domain_node* del_node = searchDomainNode(domainName);
+	if(NULL==del_node){
+		traceEvent("Del node failed, can not find in list",domainName,"WARN");
+	}else{
+		//free the node
+		traceEvent("Find the node in list",domainName,"INFO");
+		clear_domain_node(del_node);
+		free(del_node);
+	}
+	//output to file
+	OutPutDelDomain2File(domainName);
+	//tell the engine
 }
 
 //do handle policys conf

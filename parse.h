@@ -26,6 +26,8 @@ extern void parse_policy_block_list(const char* domainName,Domain_node* setDomai
 
 //gpj
 
+extern void OutPutDelDoman2File(const char* domainName);
+
 void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,size_t baseLen,const char* trustData,size_t trustLen,const char* blockData,size_t blockLen,bool addFlag);
 xmlXPathObjectPtr getNodeset(xmlDocPtr doc, const xmlChar *xpath); 
 #endif

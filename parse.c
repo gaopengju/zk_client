@@ -21,42 +21,22 @@ int globalOutLimit = 0;
 void parse_sys_conf(const char* data, size_t dataLen)
 {
 	traceEvent("Parser sys conf begin","get sys conf completed","INFO");
-        
-        cJSON* pJson = cJSON_Parse(data);
-        if(!pJson){
-	    traceEvent("Can not parse sys conf","","WARN");
-            return;
-         }
+
+	cJSON* pJson = cJSON_Parse(data);
+	if(!pJson){
+		traceEvent("Can not parse sys conf","","WARN");
+		return;
+	}
 	cJSON* cSys = cJSON_GetObjectItem(pJson,"sys");
 	cJSON* cLogLevel = cJSON_GetObjectItem(cSys,"log_level");
 	cJSON* cLogTimer = cJSON_GetObjectItem(cSys,"log_timer");
-        char log_level[4];
-        char log_timer[10];
-		if(NULL!=cLogLevel && NULL!=cLogTimer){
-			strcpy(log_level,cLogLevel->valuestring);
-			strcpy(log_timer,cLogTimer->valuestring);
-			fprintf(stderr,"level:%s,timer:%s\n",log_level,log_timer);
-			fflush(stderr);
-		}else{
-			traceEvent("Get json object log_level or log_timer failed","","WARN");
-		}
-        
-	traceEvent("Parser sys conf done-------------","get sys conf completed","INFO");
-
-//	//char xmlstr[]="<sys log='2' time='5'/>";
-//	xmlDocPtr pdoc = xmlParseMemory(data,dataLen);
-//	//xmlDocPtr pdoc = xmlParseMemory(xmlstr,strlen(xmlstr));
-//	xmlNodePtr root = xmlDocGetRootElement(pdoc);
-//	//fprintf(stdout,"log_leve:%s",xmlGetProp(root,"log_level"));
-//	//fflush(stdout);
-//	xmlChar* str_tmp = xmlGetProp(root,"log_level");
-//	global_conf.sys_conf.log_level=*str_tmp;
-//        str_tmp = xmlGetProp(root,"log_timeout");
-//	memcpy(global_conf.sys_conf.log_timeout,str_tmp,strlen(str_tmp));
-//	xmlFreeDoc(pdoc);
-//	char msg[DATA_LENGTH];
-//	sprintf(msg,"log_level:%c log_timeout:%s",global_conf.sys_conf.log_level,global_conf.sys_conf.log_timeout);
-//	traceEvent("Parser sys conf end",msg,"INFO");
+	if(NULL!=cLogLevel && NULL!=cLogTimer){
+		global_conf.sys_conf.log_level = cLogLevel->valueint;
+		global_conf.sys_conf.log_timer= cLogTimer->valueint;
+	}else{
+		traceEvent("Get json object log_level or log_timer failed","","WARN");
+	}
+	OutPutSys2File(true);
 
 }
 void free_qos_list(Qos_node* qos_ptr)
@@ -99,7 +79,28 @@ xmlXPathObjectPtr getNodeset(xmlDocPtr doc, const xmlChar *xpath)
 	return result;  
 }
 
-void OutPutQos2File(const char* domainName,Qos_node* node,bool add_del_flag)
+void OutPutSys2File()
+{
+	Sys_conf* node = &global_conf.sys_conf;
+	FILE* fp = fopen("/tmp/output","a+");
+	char msg[1024];
+	int msgLen = 1024;
+	int msgPos = 0;
+	int lenTmp = 0;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addSys{\nlog_level=%d,\n",node->log_level);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"log_timer=%d\n",node->log_timer);
+    msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n\n");
+	fprintf(stderr,"%s",msg);
+	fflush(stderr);
+	fprintf(fp,"%s",msg);
+	fflush(fp);
+	close(fp);
+}
+
+
+void OutPutBase2File(const char* domainName,Domain_node* node ,bool add_del_flag)
 {
 	FILE* fp = fopen("/tmp/output","a+");
 	char msg[1024];
@@ -107,25 +108,82 @@ void OutPutQos2File(const char* domainName,Qos_node* node,bool add_del_flag)
 	int msgPos = 0;
 	int lenTmp = 0;
 	if(add_del_flag){
-		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addQos{\ndomain:%s,\n",domainName);
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addBase{\ndomain=\"%s\",\n",domainName);
 	}else{
-		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delQos{\ndomain:%s,\n",domainName);
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delBase{\ndomain=\"%s\",\n",domainName);
 	}
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"https:%d,\n",node->https);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"cc_level=\"%s\",\n",node->cc_level);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"threshold_url=%d,\n",node->threshold_url);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"threshold_srcip=%d\n",node->threshold_srcip);
+    msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n\n");
+	fprintf(stderr,"%s",msg);
+	fflush(stderr);
+	fprintf(fp,"%s",msg);
+	fflush(fp);
+	close(fp);
+}
+
+void OutPutDelDomain2File(const char* domainName)
+{
+	FILE* fp = fopen("/tmp/output","a+");
+	char msg[1024];
+	int msgLen = 1024;
+	int msgPos = 0;
+	int lenTmp = 0;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delDomain{\ndomain=\"%s\"\n",domainName);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n\n");
+	fprintf(stderr,"%s",msg);
+	fflush(stderr);
+	fprintf(fp,"%s",msg);
+	fflush(fp);
+	close(fp);
+}
+
+
+void OutPutQos2File(const char* domainName,Qos_node* node,bool add_del_flag)
+{
+	/*
+	 * add_del_flag:is add or del
+	 */
+	FILE* fp = fopen("/tmp/output","a+");
+	char msg[1024];
+	int msgLen = 1024;
+	int msgPos = 0;
+	int lenTmp = 0;
+	if(add_del_flag){
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addQos{\ndomain=\"%s\",\n",domainName);
+	}else{
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delQos{\ndomain=\"%s\",\n",domainName);
+	}
+	msgPos = msgPos + lenTmp;
+	if(node->https)
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"https=true,\n");
+	else
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"https=false,\n");
 
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"srcip:%s,\n",node->srcip);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"srcip=\"%s\",\n",node->srcip);
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"url:%s,\n",node->url);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"url=\"%s\",\n",node->url);
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"each_srcip:%d,\n",node->each_srcip);
+	if(node->each_srcip)
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"each_srcip=true,\n");
+	else
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"each_srcip=false,\n");
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"each_url:%d,\n",node->each_url);
+	if(node->each_url)
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"each_url=true,\n");
+	else
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"each_url=false,\n");
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"speed:%d\n",node->speed);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"speed=%d\n",node->speed);
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n");
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n\n");
 	fprintf(stderr,"%s",msg);
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
@@ -142,19 +200,19 @@ void OutPutTrust2File(const char* domainName,Trust_block_table* node,bool add_de
 	int msgPos = 0;
 	int lenTmp = 0;
 	if(add_del_flag){
-		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addTrust{\ndomain:%s,\n",domainName);
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addTrust{\ndomain=\"%s\",\n",domainName);
 	}else{
-		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delTrust{\ndomain:%s,\n",domainName);
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delTrust{\ndomain=\"%s\",\n",domainName);
 	}
 
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"srcip:%s,\n",node->srcip);
-	fprintf(stderr,"***********************srcip:%s",node->srcip);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"srcip=\"%s\",\n",node->srcip);
+	fprintf(stderr,"***********************srcip=\"%s\",",node->srcip);
 	fflush(stderr);
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"url:%s,\n",node->url);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"url=\"%s\"\n",node->url);
     msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n");
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n\n");
 	fprintf(stderr,"%s",msg);
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
@@ -169,17 +227,17 @@ void OutPutBlock2File(const char* domainName,Trust_block_table* node,bool add_de
 	int msgPos = 0;
 	int lenTmp = 0;
 	if(add_del_flag){
-		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addBlock{\ndomain:%s,\n",domainName);
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"addBlock{\ndomain=\"%s\",\n",domainName);
 	}else{
-		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delBlock{\ndomain:%s,\n",domainName);
+		lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"delBlock{\ndomain=\"%s\",\n",domainName);
 	}
 
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"srcip:%s,\n",node->srcip);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"srcip=\"%s\",\n",node->srcip);
 	msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"url:%s,\n",node->url);
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"url=\"%s\"\n",node->url);
     msgPos = msgPos + lenTmp;
-	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n");
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"}\n\n");
 	fprintf(stderr,"%s",msg);
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
@@ -209,6 +267,7 @@ bool parse_policy_base_conf(const char* domainName,Domain_node* dnodePtr)
 
 	cJSON* pTurl = cJSON_GetObjectItem(pJson,"threshold_url");
 	dnodePtr->threshold_url = pTurl->valueint;
+	OutPutBase2File(domainName,dnodePtr,true);
 
 	fprintf(stderr,"get base level:%s,tsrcip:%d,turl:%d\n",dnodePtr->cc_level,dnodePtr->threshold_srcip,dnodePtr->threshold_url);
 	fflush(stderr);
@@ -267,8 +326,8 @@ bool parse_policy_base_conf(const char* domainName,Domain_node* dnodePtr)
 			}
 
 			cJSON* pSpeed = cJSON_GetObjectItem(pQosArrayItem,"value");
-			strcpy(new_node->speed,pSpeed->valuestring);
-			fprintf(stderr,"QQQQQQQQQos value:%s,  %s",new_node->speed,pSpeed->valuestring);
+			fprintf(stderr,"QQQQQQQQQos domain:%s,value:%d,  %d",domainName,new_node->speed,pSpeed->valueint);
+			new_node->speed = pSpeed->valueint;
 
 			OutPutQos2File(domainName,new_node,true);
 
@@ -377,19 +436,6 @@ void parse_policy_block_list(const char* domainName,Domain_node* dnodePtr)
 	}
 }
 
-//void initDomainNode(Domain_node* domain_ptr)
-//{
-//	memset(domain_ptr->domainName,0,URL_LENGTH);
-//	domain_ptr->cc_level = 0;
-//	domain_ptr->threshold_srcip = 0;
-//	domain_ptr->threshold_url = 0;
-//	domain_ptr->qos_list = NULL;
-//	domain_ptr->qos_list_cur = NULL;
-//	domain_ptr->trust_list = NULL;
-//	domain_ptr->block_list = NULL;
-//	domain_ptr->next = NULL;
-//	
-//}
 
 void parseDomainPolicy(const char* urlName,size_t nameLen,const char* baseData,size_t baseLen,const char* trustData,size_t trustLen,const char* blockData,size_t blockLen,bool addFlag)
 {
