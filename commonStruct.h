@@ -69,6 +69,7 @@ typedef struct domain_node{
 
 typedef struct global_conf{
 	Sys_conf sys_conf;
+	    int domainNum;
         Domain_node* domain_list;
         Domain_node* domain_list_cur;
 }Global_conf;

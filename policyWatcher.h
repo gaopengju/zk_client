@@ -120,35 +120,37 @@ struct mylist{
 //         Domain_node* domain_list_cur;
 // }Global_conf;
 
-extern zhandle_t* zhEngine;
-extern struct String_vector myGroThreshold;
+//extern zhandle_t* zhEngine;
+//extern struct String_vector myGroThreshold;
 
 extern void* watchGetThread();
-extern int init_check_zknode(zhandle_t *zkhandle);
-extern void getChildren(char *str);
+//extern int init_check_zknode(zhandle_t *zkhandle);
+//extern void getChildren(char *str);
 extern void get_config_policy(char *str);
-extern void wexists(zhandle_t *zkhandle, char *path, char *ctx);
+//extern void wexists(zhandle_t *zkhandle, char *path, char *ctx);
 
-extern void zkadd_watcher_g(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
-extern void zk_gp_watcher(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
-extern void zkpolicy_watcher_g(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
-extern void get_group_policy(char *path, struct mylist* str);
-
-extern void get_group_threshold(char *path);
-extern char* get_threshold(char* host, int timeout, char *path);
+//extern void zkadd_watcher_g(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
+//extern void zk_gp_watcher(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
+//extern void zkpolicy_watcher_g(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx);
+//extern void get_group_policy(char *path, struct mylist* str);
+//
 //extern void get_group_threshold(char *path);
-extern void get_global(char *str);
-//extern char* get_global_threshold(char *str);
-extern char* get_global_threshol(char *str, void (*wfun)(zhandle_t*, int, int, const char*, void*), void (*dfun)(int, const char*, int, const struct Stat*, const void*));
-extern void parseInject(const char *pMsg);
-extern void parseMac(char *pMsg);
-extern void parseInterface(char *pMsg);
-extern void parseGlobal(char *pMsg);
-extern void parsePolicy(const char* pMsg);
-extern void parseGroupThreshold(char* pMsg, char *path);
-extern void parseGlobalThreshold(char *pMsg);
+//extern char* get_threshold(char* host, int timeout, char *path);
+////extern void get_group_threshold(char *path);
+//extern void get_global(char *str);
+////extern char* get_global_threshold(char *str);
+//extern char* get_global_threshol(char *str, void (*wfun)(zhandle_t*, int, int, const char*, void*), void (*dfun)(int, const char*, int, const struct Stat*, const void*));
+//extern void parseInject(const char *pMsg);
+//extern void parseMac(char *pMsg);
+//extern void parseInterface(char *pMsg);
+//extern void parseGlobal(char *pMsg);
+//extern void parsePolicy(const char* pMsg);
+//extern void parseGroupThreshold(char* pMsg, char *path);
+//extern void parseGlobalThreshold(char *pMsg);
 extern int isLeader();
 
-extern void parseGlobalPolicy(char *pMsg);
+extern Domain_node* searchDomainNode(const char* domainName);
+
+//extern void parseGlobalPolicy(char *pMsg);
 
 extern void handle_each_policy(const char* domain_name,bool new_flag);

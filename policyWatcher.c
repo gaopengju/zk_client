@@ -468,8 +468,25 @@ void policys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* 
 		struct String_vector childStrings;
 		struct Stat stat;
 		zoo_wget_children2(zh,path,policys_conf_watch,watchCtx,&childStrings,&stat);
+		int cnt = childStrings.count;
+		if(global_conf.domainNum>=cnt){
+			//handle add new node only
+			traceEvent("Child del event,need not compare",path,"INFO");
+			return;
+		}
+		char domain[DOMAIN_LENGTH];
+		int i=0;
+		for(i=0;i<cnt;i++){
+			strcpy(domain,childStrings.data[i]);
+			if(NULL==searchDomainNode(domain)){
+				//here child event is add new node
+				handle_each_policy(childStrings.data[i],true);
+				return;
+			}
+		}
 	}
 }
+
 //do handle one policy conf
 void zkpolicy_watch(zhandle_t* zh,int type,int state,const char* path,void* watherCtx)
 {
@@ -561,6 +578,7 @@ void clear_domain_node(Domain_node* domain_node)
 		domain_node->block_list_cur = NULL;
 	}
 }
+
 Domain_node* searchDomainNode(const char* domainName)
 {
 	Domain_node* find_node = global_conf.domain_list_cur;
@@ -592,6 +610,7 @@ void insertDomainList(Domain_node* node)
 		node->pre = global_conf.domain_list_cur;
 		global_conf.domain_list_cur = node;
 	}
+	global_conf.domainNum++;
 }
 
 
@@ -709,14 +728,35 @@ void handle_each_policy(const char* domain_name,bool new_flag)
 void handle_del_policy(const char* domainName)
 {
 	//find node in list
+	fprintf(stderr,"111111111\n");
+	fflush(stderr);
 	Domain_node* del_node = searchDomainNode(domainName);
+	fprintf(stderr,"22222:%p\n",del_node);
+	fflush(stderr);
 	if(NULL==del_node){
 		traceEvent("Del node failed, can not find in list",domainName,"WARN");
 	}else{
-		//free the node
 		traceEvent("Find the node in list",domainName,"INFO");
+		//reset list
+		if(del_node->pre)
+			del_node->pre->next = del_node->next;
+		else
+			global_conf.domain_list = del_node->next;
+		if(del_node->next)
+			del_node->next->pre = del_node->pre;
+		else
+			global_conf.domain_list_cur = del_node->pre;
+
+		global_conf.domainNum--;
+		fprintf(stderr,"333:%p\n",del_node);
+		fflush(stderr);
+		//free the node
 		clear_domain_node(del_node);
+		fprintf(stderr,"4444:%p\n",del_node);
+		fflush(stderr);
 		free(del_node);
+		fprintf(stderr,"5555555:%p\n",del_node);
+		fflush(stderr);
 	}
 	//output to file
 	OutPutDelDomain2File(domainName);
