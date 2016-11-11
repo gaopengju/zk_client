@@ -4,7 +4,7 @@
 #define IP_LENGTH        16
 
 #include <libxml/xpath.h>
-#include "list_struct.h"
+#include "commonStruct.h"
 
 extern char macIp[IP_LENGTH];
 extern char injectIp[IP_LENGTH];
