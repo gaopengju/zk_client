@@ -30,55 +30,18 @@ void parse_sys_conf(const char* data, size_t dataLen)
 	cJSON* cSys = cJSON_GetObjectItem(pJson,"sys");
 	cJSON* cLogLevel = cJSON_GetObjectItem(cSys,"log_level");
 	cJSON* cLogTimer = cJSON_GetObjectItem(cSys,"log_timer");
+	cJSON* cEnable = cJSON_GetObjectItem(cSys,"enable");
 	if(NULL!=cLogLevel && NULL!=cLogTimer){
 		global_conf.sys_conf.log_level = cLogLevel->valueint;
 		global_conf.sys_conf.log_timer= cLogTimer->valueint;
+		//gpj:todo global_conf.sys_conf.enable = cLogTimer->valueint;
 	}else{
 		traceEvent("Get json object log_level or log_timer failed","","WARN");
 	}
-	OutPutSys2File(true);
+	//OutPutSys2File(true);
 
 }
-//void free_qos_list(Qos_node* qos_ptr)
-//{
-//	while(qos_ptr)
-//	{
-//		Qos_node* node_tmp = qos_ptr;
-//		qos_ptr = qos_ptr->next;
-//		free(node_tmp);
-//	}
-//}
-//
-//xmlXPathObjectPtr getNodeset(xmlDocPtr doc, const xmlChar *xpath)  
-//{  
-//	xmlXPathContextPtr context;  
-//	xmlXPathObjectPtr result;  
-//	context = xmlXPathNewContext(doc);  
-//
-//	if (context == NULL) {  
-//		fprintf(stderr,"context is NULL\n");  
-//		traceEvent("GetNodeset ","context is NULL","WARN");
-//		return NULL;  
-//	}  
-//
-//	result = xmlXPathEvalExpression(xpath, context);  
-//	xmlXPathFreeContext(context);  
-//	if (result == NULL) {  
-//		fprintf(stderr,"xmlXPathEvalExpression return NULL\n");  
-//		traceEvent("GetNodeset "," xmlXpathEvalExpression return NULL","WARN");
-//		return NULL;  
-//	}  
-//
-//	if (xmlXPathNodeSetIsEmpty(result->nodesetval)) {  
-//		xmlXPathFreeObject(result);  
-//		fprintf(stderr,"nodeset is empty\n");  
-//		traceEvent("GetNodeset "," nodeset is empty","INFO");
-//		return NULL;  
-//	}  
-//
-//	return result;  
-//}
-
+#if 0
 void OutPutSys2File()
 {
 	Sys_conf* node = &global_conf.sys_conf;
@@ -96,9 +59,8 @@ void OutPutSys2File()
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
 	fflush(fp);
-	close(fp);
+	fclose(fp);
 }
-
 
 void OutPutBase2File(const char* domainName,Domain_node* node ,bool add_del_flag)
 {
@@ -124,7 +86,7 @@ void OutPutBase2File(const char* domainName,Domain_node* node ,bool add_del_flag
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
 	fflush(fp);
-	close(fp);
+	fclose(fp);
 }
 
 void OutPutDelDomain2File(const char* domainName)
@@ -141,7 +103,7 @@ void OutPutDelDomain2File(const char* domainName)
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
 	fflush(fp);
-	close(fp);
+	fclose(fp);
 }
 
 
@@ -188,7 +150,7 @@ void OutPutQos2File(const char* domainName,Qos_node* node,bool add_del_flag)
 	fflush(stderr);
 	fprintf(fp,"%s",msg);
 	fflush(fp);
-	close(fp);
+	fclose(fp);
 
 }
 
@@ -244,14 +206,14 @@ void OutPutBlock2File(const char* domainName,Trust_block_table* node,bool add_de
 	fflush(fp);
 	close(fp);
 }
+#endif 
 
-
-bool parse_policy_base_conf(const char* domainName,Domain_node* dnodePtr)
+int parse_policy_base_conf(const char* domainName,Domain_node* dnodePtr)
 {
 	traceEvent("Do parse policy base conf",domainName,"INFO");
 	cJSON* pJson = cJSON_Parse(PolicyBaseData);
-	fprintf(stderr,"policybasedata:%s\n",PolicyBaseData);
-	fflush(stderr);
+//	fprintf(stderr,"policybasedata:%s\n",PolicyBaseData);
+//	fflush(stderr);
 	if(!pJson)
 	  {
 		  traceEvent("Parse base conf for json failed,",domainName,"WARN");
@@ -267,10 +229,12 @@ bool parse_policy_base_conf(const char* domainName,Domain_node* dnodePtr)
 
 	cJSON* pTurl = cJSON_GetObjectItem(pJson,"threshold_url");
 	dnodePtr->threshold_url = pTurl->valueint;
-	OutPutBase2File(domainName,dnodePtr,true);
+	cJSON* pEnable = cJSON_GetObjectItem(pJson,"enable");
+//gpj:todo 	dnodePtr->enable = pEnable->valueint;
+	//OutPutBase2File(domainName,dnodePtr,true);
 
-	fprintf(stderr,"get base level:%s,tsrcip:%d,turl:%d\n",dnodePtr->cc_level,dnodePtr->threshold_srcip,dnodePtr->threshold_url);
-	fflush(stderr);
+//	fprintf(stderr,"get base level:%s,tsrcip:%d,turl:%d\n",dnodePtr->cc_level,dnodePtr->threshold_srcip,dnodePtr->threshold_url);
+//	fflush(stderr);
 
 	cJSON* pQos = cJSON_GetObjectItem(pJson,"qos");
 	if(!pQos){
@@ -326,10 +290,10 @@ bool parse_policy_base_conf(const char* domainName,Domain_node* dnodePtr)
 			}
 
 			cJSON* pSpeed = cJSON_GetObjectItem(pQosArrayItem,"value");
-			fprintf(stderr,"QQQQQQQQQos domain:%s,value:%d,  %d",domainName,new_node->speed,pSpeed->valueint);
+		//	fprintf(stderr,"QQQQQQQQQos domain:%s,value:%d,  %d",domainName,new_node->speed,pSpeed->valueint);
 			new_node->speed = pSpeed->valueint;
 
-			OutPutQos2File(domainName,new_node,true);
+	//		OutPutQos2File(domainName,new_node,true);
 
 		}
 
@@ -363,25 +327,26 @@ void parse_policy_trust_list(const char* domainName,Domain_node* dnodePtr)
 		Trust_block_table* new_node = malloc(sizeof(Trust_block_table));
 		if(new_node){
 			//place node in list
-			if(NULL==dnodePtr->trust_list_cur){
-				dnodePtr->trust_list_cur = new_node;
-				dnodePtr->trust_list = new_node;
-			}else{
+			if(dnodePtr->trust_list_cur){
 				//not first node
 				dnodePtr->trust_list_cur->next = new_node;
 				dnodePtr->trust_list_cur = new_node;
+
+			}else{
+				dnodePtr->trust_list_cur = new_node;
+				dnodePtr->trust_list = new_node;
 			}
 			//write conf to this node
 			cJSON* pTrustArrayItem = cJSON_GetArrayItem(pTrustList,i);
 			cJSON* pSrcip = cJSON_GetObjectItem(pTrustArrayItem,"srcip");
 			strcpy(new_node->srcip,pSrcip->valuestring);
-			fprintf(stderr,"get---------srcip:%s,new_node:srcip:%s\n",pSrcip->valuestring,new_node->srcip);
-			fflush(stderr);
+//			fprintf(stderr,"get---------srcip:%s,new_node:srcip:%s\n",pSrcip->valuestring,new_node->srcip);
+//			fflush(stderr);
 
 			cJSON* pUrl = cJSON_GetObjectItem(pTrustArrayItem,"url");
 			strcpy(new_node->url,pUrl->valuestring);
 
-			OutPutTrust2File(domainName,new_node,true);
+//			OutPutTrust2File(domainName,new_node,true);
 
 		}else{
 			traceEvent("Malloc failed in parse trust list",domainName,"WARN");
@@ -395,8 +360,8 @@ void parse_policy_block_list(const char* domainName,Domain_node* dnodePtr)
 		traceEvent("Has no block list ",domainName,"INFO");
 	}
 	cJSON* pJson = cJSON_Parse(PolicyBlockData);
-	fprintf(stderr,"policytrustdata:%s\n",PolicyBlockData);
-	fflush(stderr);
+//	fprintf(stderr,"policytrustdata:%s\n",PolicyBlockData);
+//	fflush(stderr);
 	if(!pJson)
 	  {
 		  traceEvent("Parse block conf for json failed,",domainName,"WARN");
@@ -430,7 +395,7 @@ void parse_policy_block_list(const char* domainName,Domain_node* dnodePtr)
 			cJSON* pUrl = cJSON_GetObjectItem(pBlockArrayItem,"url");
 			strcpy(new_node->url,pUrl->valuestring);
 
-			OutPutBlock2File(domainName,new_node,true);
+//			OutPutBlock2File(domainName,new_node,true);
 
 		}
 	}

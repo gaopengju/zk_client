@@ -19,7 +19,7 @@ extern void parseInterface(char *pMsg);
 extern void parseGlobalPolicy(char *pMsg);
 extern void parse_sys_conf(const char* data,size_t len);
 
-extern bool parse_policy_base_conf(const char* domainName,Domain_node* domain_node);
+extern int parse_policy_base_conf(const char* domainName,Domain_node* domain_node);
 extern void parse_policy_trust_list(const char* domainName,Domain_node* setDomainNode);
 extern void parse_policy_block_list(const char* domainName,Domain_node* setDomainNode);
 

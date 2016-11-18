@@ -35,6 +35,7 @@
 #define URL_LENGTH                      256
 
 typedef struct sys_conf{
+    bool enable;
 	int log_level;
 	int log_timer;
 }Sys_conf;
@@ -47,7 +48,7 @@ typedef struct qos_node{
 	int  speed;
 	struct qos_node* next;
 }Qos_node;
-typedef struct trust_block_list{
+typedef struct trust_block_table{
 	char srcip[IP_LENGTH];
 	char url[URL_LENGTH];
 	struct trust_block_table* next;
@@ -57,6 +58,7 @@ typedef struct domain_node{
 	char cc_level[S_LENGTH];
     int threshold_srcip;	
     int threshold_url;	
+    bool enable;
 	Qos_node* qos_list;
 	Qos_node* qos_list_cur;
 	Trust_block_table* trust_list;
@@ -68,7 +70,7 @@ typedef struct domain_node{
 }Domain_node;
 
 typedef struct global_conf{
-	Sys_conf sys_conf;
+	    Sys_conf sys_conf;
 	    int domainNum;
         Domain_node* domain_list;
         Domain_node* domain_list_cur;

@@ -1,6 +1,7 @@
 #include "policyWatcher.h"
 #include "commonStruct.h"
-
+#define CC_CONF_PATH "/tmp/cc_conf/"
+#define CC_CONF_ENGINE "/tmp/cc_conf_engine"
 int SPACE_1M=1048576;
 int SPACE_5M=1048576*5;
 struct mylist myStr;
@@ -11,14 +12,14 @@ Global_conf global_conf;
 int32_t current_version;
 zhandle_t* zkhandle;
 volatile bool aopt_busy = false;
-
 char* PolicyBaseData;
 char* PolicyTrustData;
 char* PolicyBlockData;
-
 static int connected = 0;
 static int expired = 0;
 char zkEnv[LENGTH] = "";
+char* gTrue = "True";
+char* gFalse = "False";
 
 
 void set_aopt_busy(bool flag)
@@ -33,7 +34,292 @@ void get_zookeeper_env()
 {
     sprintf(zkEnv ,"%s", getenv("ZOOKEEPER_HOME"));
     printf("zookeeper path = %s\n", zkEnv);
+}
+void outSysConf2File()
+{
+    /*
+     * output msg to local file
+     */
+    Sys_conf* sys_node = &global_conf.sys_conf;
+    //sys 
+    cJSON* sys_json = cJSON_CreateObject();
+    cJSON_AddItemToObject(sys_json,"log_level",cJSON_CreateNumber(sys_node->log_level));
+    cJSON_AddItemToObject(sys_json,"log_timer",cJSON_CreateNumber(sys_node->log_timer));
+    cJSON_AddItemToObject(sys_json,"enable",cJSON_CreateBool(sys_node->enable));
+    char* out = cJSON_Print(sys_json); 
+    char* outfile[URL_LENGTH+128];
+    strcpy(outfile,CC_CONF_PATH);
+    strcat(outfile,"_sys");
+    if(0!=access(CC_CONF_PATH,F_OK)){
+        traceEvent("CC_CONF_PATH not exists,create it ","","INFO");
+        mkdir(CC_CONF_PATH,S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH);
+    }
+    FILE* fp = fopen(outfile,"w");
+    fprintf(fp,"%s",out);
+    fflush(fp);
+    fclose(fp);
+    free(out);
+}
+void outPolicy2File(Domain_node* domain_ptr)
+{
+    /*
+     * out put policy to local file
+     */
 
+    traceEvent("Do outPolicy2File","","INFO");
+    if(domain_ptr){
+        //output single domain
+        cJSON* policy_json = cJSON_CreateObject();
+        cJSON_AddItemToObject(policy_json,"domain",cJSON_CreateString(domain_ptr->domainName));
+        cJSON_AddItemToObject(policy_json,"cc_level",cJSON_CreateString(domain_ptr->cc_level));
+        cJSON_AddItemToObject(policy_json,"threshold_url",cJSON_CreateNumber(domain_ptr->threshold_url));
+        cJSON_AddItemToObject(policy_json,"threshold_srcip",cJSON_CreateNumber(domain_ptr->threshold_srcip));
+        cJSON_AddItemToObject(policy_json,"enable",cJSON_CreateBool(domain_ptr->enable));
+        //qos
+        cJSON* qos_array = cJSON_CreateArray();
+        cJSON_AddItemToObject(policy_json,"qos",qos_array);
+        Qos_node* qos_tmp = domain_ptr->qos_list;
+        while(qos_tmp){
+            cJSON* qos_json = cJSON_CreateObject();
+            if(qos_tmp->https)
+                cJSON_AddItemToObject(qos_json,"https",cJSON_CreateTrue());
+            else
+                cJSON_AddItemToObject(qos_json,"https",cJSON_CreateFalse());
+            if(qos_tmp->each_srcip)
+                cJSON_AddItemToObject(qos_json,"each_srcip",cJSON_CreateTrue());
+            else
+                cJSON_AddItemToObject(qos_json,"each_srcip",cJSON_CreateFalse());
+            if(qos_tmp->each_url)
+                cJSON_AddItemToObject(qos_json,"each_url",cJSON_CreateTrue());
+            else
+                cJSON_AddItemToObject(qos_json,"each_url",cJSON_CreateFalse());
+            cJSON_AddItemToObject(qos_json,"srcip",cJSON_CreateString(qos_tmp->srcip));
+            cJSON_AddItemToObject(qos_json,"url",cJSON_CreateString(qos_tmp->url));
+            cJSON_AddItemToObject(qos_json,"speed",cJSON_CreateNumber(qos_tmp->speed));
+            cJSON_AddItemToArray(qos_array,qos_json);
+            qos_tmp = qos_tmp->next;
+        }
+        //trust list
+        cJSON* trust_array = cJSON_CreateArray();
+        cJSON_AddItemToObject(policy_json,"trust_list",trust_array);
+        Trust_block_table* trust_tmp = domain_ptr->trust_list;
+        while(trust_tmp){
+            cJSON* trust_json = cJSON_CreateObject();
+            cJSON_AddItemToObject(trust_json,"srcip",cJSON_CreateString(trust_tmp->srcip));
+            cJSON_AddItemToObject(trust_json,"url",cJSON_CreateString(trust_tmp->url));
+            cJSON_AddItemToArray(trust_array,trust_json);
+            trust_tmp = trust_tmp->next;
+        }
+        //block list
+        cJSON* block_array = cJSON_CreateArray();
+        cJSON_AddItemToObject(policy_json,"block_list",block_array);
+        Trust_block_table* block_tmp = domain_ptr->block_list;
+        while(block_tmp){
+            cJSON* block_json = cJSON_CreateObject();
+            cJSON_AddItemToObject(block_json,"srcip",cJSON_CreateString(block_tmp->srcip));
+            cJSON_AddItemToObject(block_json,"url",cJSON_CreateString(block_tmp->url));
+            cJSON_AddItemToArray(block_array,block_json);
+            block_tmp = block_tmp->next;
+        }
+        char* out = cJSON_Print(policy_json);
+        //clear old file
+        char* outfile[URL_LENGTH+128];
+        strcpy(outfile,CC_CONF_PATH);
+        strcat(outfile,domain_ptr->domainName);
+        if(0!=access(CC_CONF_PATH,F_OK)){
+            traceEvent("CC_CONF_PATH not exists,create it ","","INFO");
+            mkdir(CC_CONF_PATH,S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH);
+        }
+        FILE* fp = fopen(outfile,"w");
+        fprintf(fp,"%s",out);
+        fflush(fp);
+        fclose(fp);
+        free(out);
+    }else{
+        //output all domain
+
+        outSysConf2File(); 
+        Domain_node* node_tmp = global_conf.domain_list;
+        while(node_tmp){
+            cJSON* policy_json = cJSON_CreateObject();
+            cJSON_AddItemToObject(policy_json,"domain",cJSON_CreateString(node_tmp->domainName));
+            cJSON_AddItemToObject(policy_json,"cc_level",cJSON_CreateString(node_tmp->cc_level));
+            cJSON_AddItemToObject(policy_json,"threshold_url",cJSON_CreateNumber(node_tmp->threshold_url));
+            cJSON_AddItemToObject(policy_json,"threshold_srcip",cJSON_CreateNumber(node_tmp->threshold_srcip));
+            cJSON_AddItemToObject(policy_json,"enable",cJSON_CreateBool(domain_ptr->enable));
+            //qos
+            cJSON* qos_array = cJSON_CreateArray();
+            cJSON_AddItemToObject(policy_json,"qos",qos_array);
+            Qos_node* qos_tmp = node_tmp->qos_list;
+            while(qos_tmp){
+                cJSON* qos_json = cJSON_CreateObject();
+                if(qos_tmp->https)
+                    cJSON_AddItemToObject(qos_json,"https",cJSON_CreateTrue());
+                else
+                    cJSON_AddItemToObject(qos_json,"https",cJSON_CreateFalse());
+                if(qos_tmp->each_srcip)
+                    cJSON_AddItemToObject(qos_json,"each_srcip",cJSON_CreateTrue());
+                else
+                    cJSON_AddItemToObject(qos_json,"each_srcip",cJSON_CreateFalse());
+                if(qos_tmp->each_url)
+                    cJSON_AddItemToObject(qos_json,"each_url",cJSON_CreateTrue());
+                else
+                    cJSON_AddItemToObject(qos_json,"each_url",cJSON_CreateFalse());
+                cJSON_AddItemToObject(qos_json,"srcip",cJSON_CreateString(qos_tmp->srcip));
+                cJSON_AddItemToObject(qos_json,"url",cJSON_CreateString(qos_tmp->url));
+                cJSON_AddItemToObject(qos_json,"speed",cJSON_CreateNumber(qos_tmp->speed));
+                cJSON_AddItemToArray(qos_array,qos_json);
+                qos_tmp = qos_tmp->next;
+            }
+            //trust list
+            cJSON* trust_array = cJSON_CreateArray();
+            cJSON_AddItemToObject(policy_json,"trust_list",trust_array);
+            Trust_block_table* trust_tmp = node_tmp->trust_list;
+            while(trust_tmp){
+                cJSON* trust_json = cJSON_CreateObject();
+                cJSON_AddItemToObject(trust_json,"srcip",cJSON_CreateString(trust_tmp->srcip));
+                cJSON_AddItemToObject(trust_json,"url",cJSON_CreateString(trust_tmp->url));
+                cJSON_AddItemToArray(trust_array,trust_json);
+                trust_tmp = trust_tmp->next;
+            }
+            //block list
+            cJSON* block_array = cJSON_CreateArray();
+            cJSON_AddItemToObject(policy_json,"block_list",block_array);
+            Trust_block_table* block_tmp = node_tmp->block_list;
+            while(block_tmp){
+                cJSON* block_json = cJSON_CreateObject();
+                cJSON_AddItemToObject(block_json,"srcip",cJSON_CreateString(block_tmp->srcip));
+                cJSON_AddItemToObject(block_json,"url",cJSON_CreateString(block_tmp->url));
+                cJSON_AddItemToArray(block_array,block_json);
+                block_tmp = block_tmp->next;
+            }
+            char* out = cJSON_Print(policy_json);
+            //clear old file
+            char* outfile[URL_LENGTH+128];
+            memset(outfile,0,URL_LENGTH+128);
+            strcpy(outfile,CC_CONF_PATH);
+            strcat(outfile,node_tmp->domainName);
+            if(0!=access(CC_CONF_PATH,F_OK)){
+                traceEvent("CC_CONF_PATH not exists,create it ","","INFO");
+                mkdir(CC_CONF_PATH,S_IRWXU|S_IRGRP|S_IXGRP|S_IROTH);
+            }
+            FILE* fp = fopen(outfile,"w");
+            fprintf(fp,"%s",out);
+            fflush(fp);
+            fclose(fp);
+            free(out);
+            node_tmp = node_tmp->next;
+        }
+    }
+}
+
+void addSys2File()
+{
+    /*
+     * output msg for engine commit
+     */
+
+	traceEvent("Do addSys2File","","INFO");
+	Sys_conf* sys_node = &global_conf.sys_conf;
+	FILE* fp = fopen(CC_CONF_ENGINE,"a+");
+	char msg[1024];
+	int msgLen = 1024;
+	int msgPos = 0;
+	int lenTmp = 0;
+    char* enable_str = NULL;
+    if(sys_node->enable){
+        enable_str = gTrue;
+    }else{
+        enable_str = gFalse;
+    }
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"AddSys{\n    log_level=%d,\n",sys_node->log_level);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"    log_timer=%d,\n    enable=%s\n    \}\n\n",sys_node->log_timer,enable_str);
+	fprintf(fp,"%s",msg);
+	fflush(fp);
+	fclose(fp);
+}
+
+void addPolicy2File(Domain_node* node)
+{
+    /*
+     * add msg for engine commit
+     */
+	traceEvent("Do addPolicy2File",node->domainName,"INFO");
+	FILE* fp = fopen(CC_CONF_ENGINE,"a+");
+	if(NULL==fp){
+		traceEvent("Do addPolicy2File open file failed",node->domainName,"WARN");
+		return;
+	}
+	char msg[1024];
+	int msgLen = 1024;
+	int msgPos = 0;
+	int lenTmp = 0;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"AddPolicy{\n    domain=\"%s\",\n",node->domainName);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"    cc_level=\"%s\",\n",node->cc_level);
+	msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"    threshold_srcip=%d,\n",node->threshold_srcip);
+    msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"    threshold_url=%d,\n",node->threshold_url);
+    msgPos = msgPos + lenTmp;
+	lenTmp = snprintf(msg+msgPos,msgLen-msgPos,"    qos=\{\n");
+	fprintf(fp,"%s",msg);
+	Qos_node* qos_tmp = node->qos_list;
+	bool first_f = true;
+	while(qos_tmp){
+		if(first_f){
+			fprintf(fp,"        \{\n        srcip=\"%s\",\n",qos_tmp->srcip);
+			first_f = false;
+		}else{
+			fprintf(fp,",\n        \{\n        srcip=\"%s\",\n",qos_tmp->srcip);
+		}
+		fprintf(fp,"        url=\"%s\",\n",qos_tmp->url);
+		fprintf(fp,"        value=%d\n        \}",qos_tmp->speed);
+		qos_tmp = qos_tmp->next;
+	}
+	fprintf(fp,"\n    \},\n");
+	fflush(fp);
+    //trust
+	first_f = true;
+	Trust_block_table* trust_tmp = node->trust_list;
+	fprintf(fp,"    trust_list=\{\n");
+	while(trust_tmp){
+		if(first_f){
+			fprintf(fp,"        \{\n        srcip=\"%s\",\n",trust_tmp->srcip);
+			first_f = false;
+		}else{
+			fprintf(fp,",\n        \{\n        srcip=\"%s\",\n",trust_tmp->srcip);
+		}
+		fprintf(fp,"        url=\"%s\"\n        \}",trust_tmp->url);
+		trust_tmp = trust_tmp->next;
+	}
+	fprintf(fp,"\n    \},\n");
+	fflush(fp);
+	//block
+	first_f = true;
+	Trust_block_table* block_tmp = node->block_list;
+	fprintf(fp,"    block_list=\{\n");
+	while(block_tmp){
+		if(first_f){
+			fprintf(fp,"        \{\n        srcip=\"%s\",\n",block_tmp->srcip);
+			first_f = false;
+		}else{
+			fprintf(fp,",\n        \{\n        srcip=\"%s\",\n",block_tmp->srcip);
+		}
+		fprintf(fp,"        url=\"%s\"\n        \}",block_tmp->url);
+		block_tmp = block_tmp->next;
+	}
+	fprintf(fp,"\n    \}\n\}\n\n");
+	fflush(fp);
+	fclose(fp);
+	traceEvent("Do addPolicy2File end","","INFO");
+}
+
+bool tellEngineCommit()
+{
+    traceEvent("Do tellEngineCommit,need to do,set WARN first","","WARN");
+    return true;
 }
 
 void main_watcher (zhandle_t *zkh, int type, int state, const char *path, void* context)
@@ -68,7 +354,6 @@ void main_watcher (zhandle_t *zkh, int type, int state, const char *path, void* 
     }
 }
 
-
 void zkstatus_watch(zhandle_t* zh, int type, int state, const char* path, void* watcherCtx)
 {
     int i=0;
@@ -77,7 +362,6 @@ void zkstatus_watch(zhandle_t* zh, int type, int state, const char* path, void* 
     int bufferlen1=sizeof(buffer1);
     struct Stat stat;
     struct String_vector strings;
-
     if(type == ZOO_CREATED_EVENT)
     {
         traceEvent("Create status event ", path, "INFO");
@@ -98,7 +382,6 @@ void zkstatus_watch(zhandle_t* zh, int type, int state, const char* path, void* 
             for(i=0;i<strings.count;++i)
             {
                 sprintf(childbuf,"%s/%s", path, strings.data[i]);
-
                 int zwflag = zoo_wexists(zh, childbuf, zkstatus_watch, "zkstatus", &stat);
                 curStatus = stat.pzxid;
                 if(initStatus == curStatus)
@@ -113,7 +396,6 @@ void zkstatus_watch(zhandle_t* zh, int type, int state, const char* path, void* 
         }
     }
 }
-
 void watch_status(char *str)
 {
     int flag;
@@ -131,10 +413,8 @@ int check_exists( zhandle_t *zh, const char *path, char *nodeData, int zooNodeTy
     int flag;
     char createPath[DATA_LENGTH] = "";
     int pathLen = sizeof(createPath);
-
     struct Stat stat;
     int existsFlag = zoo_exists(zh, path, 0, &stat);
-    
     if(existsFlag == ZOK)
     {
         return EXISTS;
@@ -146,7 +426,6 @@ int check_exists( zhandle_t *zh, const char *path, char *nodeData, int zooNodeTy
         {
 			char ermsg[20];
 			sprintf(ermsg,"Create node faild erno:%d",flag);
-
             traceEvent(ermsg, createPath, "ERROR");
             traceEvent("Create node faild ", createPath, "ERROR");
             return FAIL;
@@ -165,18 +444,13 @@ int init_check_zknode(zhandle_t *zkhandle)
     struct sockaddr_in sin;
     struct ifreq ifr;
     int flag;
-	
 	char sys_default_conf[]="{\"sys\":{\"log_level\":\"1\",\"log_timer\":\"10\"}}";
 	char init_node_path[][128] = {
 		"/sys",
 		"/policy",
 		"/policy_data",
 		"/policy_data/trust_list",
-		"/policy_data/trust_list/baidu.com",
-		"/policy_data/trust_list/letv.com",
-		"/policy_data/block_list",
-		"/policy_data/block_list/baidu.com",
-		"/policy_data/block_list/letv.com"};
+		"/policy_data/block_list"};
 	int i=0;
 	for (i=0;i<sizeof(init_node_path)/128; i++){
 		if(0==i)
@@ -190,22 +464,18 @@ int init_check_zknode(zhandle_t *zkhandle)
 		else
 			traceEvent("Create node failed ",init_node_path[i],"WARN");
 		}
-
     return 1; 
 }
 
 int isLeader()
 {
     char tmpbuf[DATA_LENGTH] = "";
-    
     FILE *pp = popen(ZOOKEEPER_STATUS, "r");
     if (!pp)
         return -1;
-
     fread( tmpbuf, sizeof(char), sizeof(tmpbuf),  pp);
     traceEvent("zookeeper run in ", tmpbuf, "INFO");
     pclose(pp);
-    
     if(strstr(tmpbuf, "follower"))
     {
         return 0;
@@ -219,7 +489,6 @@ int isLeader()
         return 2;
     }
 }
-
 static void stop (int sig) 
 {
     traceEvent("Catch ctr+c singal ", "", "INFO");
@@ -229,13 +498,11 @@ static void stop (int sig)
         if(myStr.data[i] != NULL)
             free(myStr.data[i]);
     }
-
     free(myStr.data);
     zookeeper_close(zkhandle);
     traceEvent("Stop process ", "", "INFO");
     exit(0);
 }
-
 void loop_watch_policy()
 {
     int num;
@@ -244,12 +511,10 @@ void loop_watch_policy()
     int newPolicyLen = sizeof(newPolicy);
     struct Stat curStat;
     struct String_vector curStrings;
-    
     char curPolicy[DATA_LENGTH] = "";
     char curNode[LENGTH] = "";
     int curMzxid, mzxid;
     char delCmd[LENGTH] = "";
-    
     while(loopRun == 1)
     {
         sleep(20);
@@ -268,10 +533,8 @@ void loop_watch_policy()
                     {
                         int dataLen = sizeof(curPolicy);
                         struct Stat curStat;
-
                         sprintf(curNode, "%s/%s", GROUP_POLICY_ZK, curStrings.data[i]);
                         zoo_get(zkhandle, curNode, false, curPolicy, &dataLen, &curStat);
-
                         curMzxid = curStat.mzxid;
                         mzxid = myStr.mzxid[j];
                         if(curMzxid != mzxid)
@@ -287,18 +550,14 @@ void loop_watch_policy()
                     struct mylist tmpStr;
                     char newzkNode[DATA_LENGTH] = "";
                     struct Stat curStat, newStat;
-
                     sprintf(newzkNode, "%s/%s", GROUP_POLICY_ZK, curStrings.data[i]);
-
                     num++;
                   //gpj  zoo_wget(zkhandle, newzkNode, zkgroupolicy_watch, "groupolicy_watch", newPolicy, &newPolicyLen, &newStat);
                   //  parsePolicy(newPolicy);
                     traceEvent("Get the lost group policy name ", newzkNode, "INFO");
-
                     current_version++;
                     tmpStr.count = myStr.count+1;
                     tmpStr.data = (char**)malloc(tmpStr.count * sizeof(char *));
-
                     memcpy(tmpStr.data, myStr.data, myStr.count*sizeof(char *));
                     memcpy(tmpStr.mzxid, myStr.mzxid, myStr.count);
                     tmpStr.data[tmpStr.count - 1] = strdup(curStrings.data[i]);
@@ -334,7 +593,6 @@ void loop_watch_policy()
                     traceEvent("Delete group policy cmd ",delCmd,"INFO");
                     system(delCmd);
                     remove(delFile);
-
                     current_version++;
                     if(myStr.data[i] != NULL)
                     {
@@ -362,8 +620,6 @@ void loop_watch_policy()
         }
     }
 }
-
-
 void  init_zk_for_test(zhandle_t* zkhandle)
 {
 	//init some data for test
@@ -378,9 +634,7 @@ void  init_zk_for_test(zhandle_t* zkhandle)
 	};
 	char test_nodes_value[][1024] = {
 	//	"<sys log_level=3 output_time=10/>",
-	
 "{\"protect_level\":\"high\",\"threshold_url\":\"1000\",\"threshold_srcip\":\"200\",\"qos\":{\"policy\":[{\"https\":\"false\",\"srcip\":\"1.1.1.1\",\"url\":\"letv.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"},{\"https\":\"false\",\"srcip\":\"1.1.1.1\",\"url\":\"letv1.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"}]}}",
-	
 "{\"protect_level\":\"low\",\"threshold_url\":\"1000\",\"threshold_srcip\":\"200\",\"qos\":{\"policy\":[{\"https\":\"false\",\"srcip\":\"1.1.1.1\",\"url\":\"letv.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"},{\"https\":\"false\",\"srcip\":\"1.21.1.1\",\"url\":\"letv1.com\",\"each_url\":\"true\",\"each_srcip\":\"false\",\"value\":\"1234\"}]}}",
 "{\"trust_list\":[{\"srcip\":\"1.1.11.1\",\"url\":\"letv.com\"},{\"srcip\":\"1.1.11.1\",\"url\":\"letv22.com\"}]}",
 "{\"trust_list\":[{\"srcip\":\"2.1.11.1\",\"url\":\"letv2.com\"},{\"srcip\":\"1.1.11.1\",\"url\":\"letv22.com\"}]}",
@@ -426,9 +680,10 @@ void sys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* watc
 		zoo_wget(zh,path,sys_conf_watch,"watch_sys",sysData,&dataLen,&stat);
 		traceEvent("Sys conf changed",path,"INFO");
 		parse_sys_conf(sysData,strlen(sysData));
+		addSys2File(); //sys msg to engine
+		outSysConf2File(); //sys msg to local file
 	}
 }
-
 //do handle sys conf
 void handle_sys_conf_data(int rc,const char* value,int value_len,const struct Stat* stat,const void* data)
 {
@@ -437,11 +692,12 @@ void handle_sys_conf_data(int rc,const char* value,int value_len,const struct St
 	sprintf(msg,"rc:%d,value:%s ,value_len:%d, data:%s",rc,value,value_len,data);
 	traceEvent("Do handle_sys_conf_data",msg,"INFO");
 	memcpy(sysdata,value,value_len);
-	fprintf(stderr,"-------------------data:%s",sysdata);
-	parse_sys_conf(sysdata,value_len);
-	set_aopt_busy(false);
+	//fprintf(stderr,"-------------------data:%s",sysdata);
+    parse_sys_conf(sysdata,value_len);
+    addSys2File(); //sys msg to engine
+    outSysConf2File(); //sys msg to local file
+    set_aopt_busy(false);
 }
-
 //policy_wather
 void policys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* watchCtx)
 {
@@ -471,22 +727,22 @@ void policys_conf_watch(zhandle_t* zh,int type,int state,const char* path,void* 
 		int cnt = childStrings.count;
 		if(global_conf.domainNum>=cnt){
 			//handle add new node only
-			traceEvent("Child del event,need not compare",path,"INFO");
+			traceEvent("Child del event,need not handle return",path,"INFO");
 			return;
 		}
-		char domain[DOMAIN_LENGTH];
+        traceEvent("Child add event,need handle ",path,"INFO");
+        char domain[DOMAIN_LENGTH];
 		int i=0;
 		for(i=0;i<cnt;i++){
 			strcpy(domain,childStrings.data[i]);
 			if(NULL==searchDomainNode(domain)){
 				//here child event is add new node
-				handle_each_policy(childStrings.data[i],true);
+                handle_each_policy(childStrings.data[i],true);
 				return;
 			}
 		}
 	}
 }
-
 //do handle one policy conf
 void zkpolicy_watch(zhandle_t* zh,int type,int state,const char* path,void* watherCtx)
 {
@@ -502,10 +758,9 @@ void zkpolicy_watch(zhandle_t* zh,int type,int state,const char* path,void* wath
 		//fprintf(stderr,"changed1---------ptr:%s\n",ptr);
 		char* ptr = strtok(subPath,"/");
 		ptr = strtok(NULL,"/");
-		fprintf(stderr,"delete node---------ptr:%s\n",ptr);
-		fflush(stderr);
+		//fprintf(stderr,"delete node---------ptr:%s\n",ptr);
+		//fflush(stderr);
         handle_del_policy(ptr);
-
 	}else if(ZOO_CHANGED_EVENT==type){
        //parse and set policy
 		traceEvent("zkpolicy watch changed event",path,"INFO");
@@ -514,15 +769,12 @@ void zkpolicy_watch(zhandle_t* zh,int type,int state,const char* path,void* wath
 		strcpy(subPath,path);
 		//fprintf(stderr,"changed1---------ptr:%s\n",ptr);
 		char* ptr = strtok(subPath,"/");
-		fprintf(stderr,"changed1---------ptr:%s\n",ptr);
 		ptr = strtok(NULL,"/");
-		fprintf(stderr,"changed2---------ptr:%s\n",ptr);
-		fflush(stderr);
+		//fprintf(stderr,"changed2---------ptr:%s\n",ptr);
+		//fflush(stderr);
         handle_each_policy(ptr,false); //false: not new node,just changed
 	}
-	
 }
-
 void initDomainNode(Domain_node* domain_ptr)
 {
 	memset(domain_ptr->domainName,0,URL_LENGTH);
@@ -530,10 +782,13 @@ void initDomainNode(Domain_node* domain_ptr)
 	memset(domain_ptr->cc_level,0,S_LENGTH);
 	domain_ptr->threshold_srcip = 0;
 	domain_ptr->threshold_url = 0;
+    domain_ptr->enable = true;
 	domain_ptr->qos_list = NULL;
 	domain_ptr->qos_list_cur = NULL;
 	domain_ptr->trust_list = NULL;
+	domain_ptr->trust_list_cur = NULL;
 	domain_ptr->block_list = NULL;
+	domain_ptr->block_list_cur = NULL;
 	domain_ptr->pre = NULL;
 	domain_ptr->next = NULL;
 }
@@ -598,6 +853,7 @@ Domain_node* searchDomainNode(const char* domainName)
 	}
 	return find_node;
 }
+
 void insertDomainList(Domain_node* node)
 {
 	if(NULL==global_conf.domain_list_cur){
@@ -613,15 +869,18 @@ void insertDomainList(Domain_node* node)
 	global_conf.domainNum++;
 }
 
-
 Domain_node* handle_policy_base_conf(const char* domainName,const char* basePath,bool new_flag)
 {
+    /*
+     * new_flag :true new node  false: node changed
+     */
+
 	int dataLen = SPACE_1M;
 	memset(PolicyBaseData,0,dataLen);
 	struct Stat stat;
 	int flag = zoo_wget(zkhandle,basePath,zkpolicy_watch,"watch_policy",PolicyBaseData,&dataLen,&stat);
-	fprintf(stderr,"zoo_wget dataLen:%d, PolicyBaseData:%s\n",dataLen,PolicyBaseData);
-	fflush(stderr);
+//	fprintf(stderr,"zoo_wget dataLen:%d, PolicyBaseData:%s\n",dataLen,PolicyBaseData);
+//	fflush(stderr);
 	Domain_node* set_domain_node = NULL;
 	if(!new_flag){
 		//domain exists: search first,then reset it. 
@@ -645,7 +904,6 @@ Domain_node* handle_policy_base_conf(const char* domainName,const char* basePath
 	else
 		return NULL;
 }
-
 
 void handle_policy_trust_conf(const char* domainName,const char* trustPath,Domain_node* setDomainNode)
 {
@@ -673,7 +931,6 @@ void handle_policy_trust_conf(const char* domainName,const char* trustPath,Domai
 		}
 	}
 }
-
 void handle_policy_block_conf(const char* domainName,const char* blockPath,Domain_node* setDomainNode)
 {
 	struct String_vector curstrings;
@@ -685,8 +942,8 @@ void handle_policy_block_conf(const char* domainName,const char* blockPath,Domai
 			char subPath[128];
 			memset(subPath,0,128);
 			sprintf(subPath,"%s/%s",blockPath,curstrings.data[i]);
-			fprintf(stderr,"g-------ggggggg---subpath:%s,getpath:%s",subPath,curstrings.data[i]);
-			fflush(stderr);
+//			fprintf(stderr,"g-------ggggggg---subpath:%s,getpath:%s",subPath,curstrings.data[i]);
+//			fflush(stderr);
 			int blockLen = SPACE_1M; 
 			memset(PolicyBlockData,0,blockLen);
 			int cflag = zoo_get(zkhandle,subPath,0,PolicyBlockData,&blockLen,NULL);
@@ -698,10 +955,12 @@ void handle_policy_block_conf(const char* domainName,const char* blockPath,Domai
 		}
 	}
 }
-
 void handle_each_policy(const char* domain_name,bool new_flag)
 {
-	//
+	/*
+     * new_flag-- true: new policy false: node changed
+     */
+
 	char basePath[128];
 	char trustPath[128];
 	char blockPath[128];
@@ -714,7 +973,6 @@ void handle_each_policy(const char* domain_name,bool new_flag)
 	int domainLen = strlen(domainName);
 	fprintf(stderr,"bpath:%s,tpath:%s,bpath:%s\n",basePath,trustPath,blockPath);
 	fflush(stderr);
-
 	Domain_node* set_domain_node = handle_policy_base_conf(domainName,basePath,new_flag);
 	if(set_domain_node){
 		handle_policy_trust_conf(domainName,trustPath,set_domain_node);
@@ -722,17 +980,27 @@ void handle_each_policy(const char* domain_name,bool new_flag)
 	}else{
 		traceEvent("Parse base conf fail ,will not parse trust/block list",domainName,"WARN");
 	}
-
     //policyToFile();
+    addPolicy2File(set_domain_node);// policy msg to engine	
+    outPolicy2File(set_domain_node);// policy msg to local file
 }
+void outDelConf2File(const char* domainName)
+{
+    /*
+     * del the domain file in local files 
+     */
+   char* delfile[URL_LENGTH+128];
+    strcpy(delfile,CC_CONF_PATH);
+    strcat(delfile,domainName);
+    if(0!=access(delfile,F_OK)){
+        remove(delfile);
+    }
+}
+
 void handle_del_policy(const char* domainName)
 {
 	//find node in list
-	fprintf(stderr,"111111111\n");
-	fflush(stderr);
 	Domain_node* del_node = searchDomainNode(domainName);
-	fprintf(stderr,"22222:%p\n",del_node);
-	fflush(stderr);
 	if(NULL==del_node){
 		traceEvent("Del node failed, can not find in list",domainName,"WARN");
 	}else{
@@ -746,21 +1014,19 @@ void handle_del_policy(const char* domainName)
 			del_node->next->pre = del_node->pre;
 		else
 			global_conf.domain_list_cur = del_node->pre;
-
 		global_conf.domainNum--;
-		fprintf(stderr,"333:%p\n",del_node);
-		fflush(stderr);
 		//free the node
 		clear_domain_node(del_node);
-		fprintf(stderr,"4444:%p\n",del_node);
-		fflush(stderr);
 		free(del_node);
-		fprintf(stderr,"5555555:%p\n",del_node);
-		fflush(stderr);
 	}
 	//output to file
-	OutPutDelDomain2File(domainName);
+//	OutPutDelDomain2File(domainName);
+    outDelConf2File(domainName);
 	//tell the engine
+    if (tellEngineCommit())
+        traceEvent("Tell engine to commit ok!","","INFO");
+    else
+        traceEvent("Tell engine to commit failed!","","INFO");
 }
 
 //do handle policys conf
@@ -775,14 +1041,8 @@ void handle_policys_conf(int rc,const struct String_vector* strings,const struct
 	}
 	set_aopt_busy(false);
 }
-
-
 void get_parse_conf(zhandle_t* zk)
 {
-	//parse conf to xml tree
-	/* TODO:parse to xml directly
-    */
-
     char sysConf[DATA_LENGTH];
 	int  dataLen = sizeof(sysConf);
 	set_aopt_busy(true);
@@ -817,10 +1077,8 @@ void* watchGetThread()
     int timeout = 30000;
     //const char *host = "localhost:2181";
     const char *host = "123.59.102.104:2181";
-    
     get_zookeeper_env();
     zoo_set_debug_level(ZOO_LOG_LEVEL_ERROR);
-
     zkhandle = zookeeper_init(host, main_watcher, timeout, 0, "hello zookeeper.", 0);
     while(!connected) 
     {
@@ -831,43 +1089,28 @@ void* watchGetThread()
         traceEvent("When init connecting to zookeeper servers...", "", "ERROR");
         return;
     }
-
-
-
     if(init_check_zknode(zkhandle))
         traceEvent("Check node ", "over", "INFO");
-
 	//for test init zk file
 	//init_zk_for_test(zkhandle);
-
     int zkType = isLeader();
     signal(SIGINT, stop);
-
 	//alloc space for conf 
     PolicyBaseData = malloc(SPACE_1M);
 	PolicyTrustData = malloc(SPACE_5M);
 	PolicyBlockData = malloc(SPACE_5M);
 	//get and parse conf 
 	get_parse_conf(zkhandle);
-
-	//set watch
-	
+	//outPolicy2File(NULL);
 /*
-    get_global_policy(GLOBAL_POLICY_ZK);
-    get_group_policy(GROUP_POLICY_ZK, &myStr);
-
-   
-    get_watch_injectroute_policy(myInjectRoute); 
     loop_watch_policy();
 	*/
 }
 
 int main(int argc, const char *argv[])
 {
-
 	traceEvent("Start policyWatch ","good luck""","INFO");
 	watchGetThread();
-    
     while(1)
     {
 		sleep(5);	
